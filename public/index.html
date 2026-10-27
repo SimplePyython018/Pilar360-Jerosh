@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101d2b">
+  <meta name="description" content="Pilar 360 — a modern community issue reporting prototype for Pilar, Sorsogon. Built by Jerosh.">
+  <title>Pilar 360 — Community Reporting</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#dashboard" aria-label="Pilar 360 dashboard">
+        <span class="brand-mark"><span>360</span><i></i></span>
+        <span class="brand-copy"><strong>PILAR<span>360</span></strong><small>COMMUNITY SIGNAL</small></span>
+      </a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="main-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-page="dashboard"><span class="nav-icon">◫</span><span>Overview</span></button>
+        <button class="nav-item" data-page="reports"><span class="nav-icon">▤</span><span>Issue reports</span><span class="nav-count" id="navReportCount">—</span></button>
+        <button class="nav-item" data-page="map"><span class="nav-icon">⌖</span><span>Community map</span></button>
+        <button class="nav-item" data-page="insights"><span class="nav-icon">▥</span><span>Insights</span></button>
+        <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span>Workspace & settings</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-note"><span class="pulse-dot"></span><div><strong>Prototype environment</strong><small>Local demo data only</small></div></div>
+        <div class="profile-mini"><div class="avatar">J</div><div class="profile-label"><strong>Jerosh</strong><small>Builder workspace</small></div><span class="profile-dots">•••</span></div>
+        <div class="side-credit">DESIGNED & BUILT BY <strong>JEROSH</strong><br><span>Independent prototype · v1.0</span></div>
+      </div>
+    </aside>
+
+    <div class="mobile-scrim" id="mobileScrim"></div>
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu">☰</button>
+          <div class="crumb"><span>Civic operations</span><b>/</b><strong id="crumbCurrent">Overview</strong></div>
+        </div>
+        <div class="topbar-right">
+          <label class="global-search"><span>⌕</span><input id="globalSearch" type="search" placeholder="Search reports…" autocomplete="off"><kbd>↵</kbd></label>
+          <div class="demo-pill"><span></span> DEMO MODE</div>
+          <div class="top-avatar" title="Jerosh">J</div>
+        </div>
+      </header>
+      <div id="pageContent" class="page-content" aria-live="polite">
+        <div class="loading-state"><div class="loader"></div><p>Preparing community workspace…</p></div>
+      </div>
+      <footer class="app-footer"><span>© <span id="yearNow"></span> Pilar 360</span><span>Built by <strong>Jerosh</strong> · Independent demo, not an official LGU service</span><a href="https://www.pilarsor.gov.ph/" target="_blank" rel="noopener noreferrer">Pilar municipal website ↗</a></footer>
+    </main>
+  </div>
+  <div id="modalHost"></div>
+  <div id="toastHost" class="toast-host" role="status" aria-live="polite"></div>
+</body>
+</html>

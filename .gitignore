@@ -1,0 +1,21 @@
+node_modules/
+.DS_Store
+*.log
+*.tmp
+.env
+# Runtime submissions/photos are local-only; don't commit them.
+/data/reports.json
+!data/.gitkeep
+
+# Secrets and local configuration
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# Local runtime data and uploads
+data/reports.json
+data/uploads/
+uploads/

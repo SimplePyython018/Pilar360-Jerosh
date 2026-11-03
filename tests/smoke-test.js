@@ -33,6 +33,9 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   const unpairedCoordinates = await call('/api/reports', json('POST', { title: 'Streetlight issue near court', category: 'Streetlight', description: 'The streetlight has not been working near the covered court.', barangay: 'Marifosque', reporter: 'Test Resident', lat: 12.92 }));
   assert.equal(unpairedCoordinates.status, 422);
 
+  const missingLocation = await call('/api/reports', json('POST', { title: 'Streetlight location missing', category: 'Streetlight', description: 'The streetlight is not working but no landmark or pin was entered.', barangay: 'Marifosque', reporter: 'Test Resident' }));
+  assert.equal(missingLocation.status, 422, 'each report must include a landmark or a map pin');
+
   const outOfScope = await call('/api/reports', json('POST', { title: 'Streetlight in another area', category: 'Streetlight', description: 'This report is outside the selected project barangay.', barangay: 'Banuyo', reporter: 'Test Resident' }));
   assert.equal(outOfScope.status, 422, 'public submissions must stay within the selected barangay');
 
@@ -47,6 +50,9 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.equal(publicTrack.status, 'Submitted');
   assert.equal('reporter' in publicTrack, false, 'public tracker must not disclose reporter identity');
   assert.equal('lat' in publicTrack, false, 'public tracker must not disclose exact coordinates');
+
+  const badOrigin = await call('/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://not-the-project.example' }, body: JSON.stringify({ password: 'wrong' }) });
+  assert.equal(badOrigin.status, 403, 'cross-origin browser requests must be rejected');
 
   const wrongLogin = await call('/api/admin/login', json('POST', { password: 'wrong' }));
   assert.equal(wrongLogin.status, 401);
@@ -78,7 +84,18 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.equal((await call('/api/reports', { headers: { cookie } })).status, 401);
 
   assert.equal((await call('/')).status, 200);
-  assert.match(await (await call('/')).text(), /Submit a report/);
+  const intro = await (await call('/')).text();
+  assert.match(intro, /Jerosh/); assert.match(intro, /Grade 12/); assert.match(intro, /href=\"\/report\"/);
+  assert.equal((await call('/report')).status, 200);
+  const portal = await (await call('/report')).text();
+  assert.match(portal, /Submit a report/);
+  assert.match(portal, /id=\"barangay\"/);
+  assert.doesNotMatch(portal, /id=\"barangay\"[^>]*value=\"Marifosque\"/);
+  assert.match(portal, /id=\"reportMap\"/);
   assert.equal((await call('/admin')).status, 200);
   assert.match(await (await call('/admin')).text(), /Authority sign in/);
+  const adminJs = await (await call('/admin-app.js')).text();
+  assert.match(adminJs, /Sign out of the authority workspace/);
+  assert.match(adminJs, /window.location.replace\('\/report'\)/);
+  assert.match(adminJs, /function initDetailMap/);
 });

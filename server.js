@@ -131,6 +131,11 @@ function createApp(options = {}) {
   function isAuthorized(req) { return Boolean(currentSession(req)); }
   function unauthorized(res) { return sendJson(res, 401, { error: 'Authority access required. Please sign in again.' }); }
   function clientIp(req) { return req.socket.remoteAddress || 'unknown'; }
+  function hasValidOrigin(req) {
+    const origin = req.headers.origin;
+    if (!origin) return true; // Non-browser clients may omit Origin; browser requests are checked.
+    try { return new URL(origin).host === req.headers.host; } catch { return false; }
+  }
   function loginLimit(ip) {
     const entry = loginAttempts.get(ip) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
     if (entry.resetAt <= Date.now()) { entry.count = 0; entry.resetAt = Date.now() + 15 * 60 * 1000; }
@@ -143,7 +148,8 @@ function createApp(options = {}) {
     try { pathname = decodeURIComponent(url.pathname); }
     catch { return sendJson(res, 400, { error: 'Invalid URL path.' }); }
     try {
-      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.0.0-demo', mode: 'prototype', now: new Date().toISOString() });
+      if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) && !hasValidOrigin(req)) return sendJson(res, 403, { error: 'Request origin was not accepted.' });
+      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.1.0-demo', mode: 'prototype', now: new Date().toISOString() });
 
       if (req.method === 'GET' && pathname === '/api/admin/session') return sendJson(res, 200, { authenticated: isAuthorized(req), configured: Boolean(adminPassword) });
       if (req.method === 'POST' && pathname === '/api/admin/login') {
@@ -166,7 +172,8 @@ function createApp(options = {}) {
       if (req.method === 'POST' && pathname === '/api/admin/logout') {
         const active = currentSession(req);
         if (active) sessions.delete(active.token);
-        return sendJson(res, 200, { authenticated: false }, { 'Set-Cookie': `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` });
+        const secure = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
+        return sendJson(res, 200, { authenticated: false }, { 'Set-Cookie': `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure ? '; Secure' : ''}` });
       }
 
       // Public reporting: a resident may submit a concern without seeing the authority inbox.
@@ -175,19 +182,21 @@ function createApp(options = {}) {
         const title = cleanString(body.title, 120);
         const description = cleanString(body.description, 1600);
         const category = cleanString(body.category, 80);
-        const barangay = cleanString(body.barangay, 100);
+        const barangayInput = cleanString(body.barangay, 100);
+        const barangay = 'Marifosque';
         const address = cleanString(body.address, 240);
         const reporter = cleanString(body.reporter, 80);
         const priority = PRIORITIES.includes(body.priority) ? body.priority : 'Normal';
         if (title.length < 5) return sendJson(res, 422, { error: 'Please enter a clear title with at least 5 characters.' });
         if (description.length < 15) return sendJson(res, 422, { error: 'Please add a description with at least 15 characters.' });
         if (!CATEGORIES.includes(category)) return sendJson(res, 422, { error: 'Choose a valid report category.' });
-        if (barangay.toLowerCase() !== 'marifosque') return sendJson(res, 422, { error: 'This project currently accepts reports for Barangay Marifosque only.' });
+        if (barangayInput.toLowerCase() !== 'marifosque') return sendJson(res, 422, { error: 'Select or type Marifosque. This proposal demo currently covers Barangay Marifosque only.' });
         if (reporter.length < 2) return sendJson(res, 422, { error: 'Please enter the name or display name of the reporter.' });
         const latInput = body.lat === '' || body.lat == null ? null : Number(body.lat);
         const lngInput = body.lng === '' || body.lng == null ? null : Number(body.lng);
         if ((latInput === null) !== (lngInput === null)) return sendJson(res, 422, { error: 'Enter both latitude and longitude, or leave both blank.' });
         if ((latInput !== null && (!Number.isFinite(latInput) || latInput < -90 || latInput > 90)) || (lngInput !== null && (!Number.isFinite(lngInput) || lngInput < -180 || lngInput > 180))) return sendJson(res, 422, { error: 'The map coordinates are invalid.' });
+        if (!address && latInput === null) return sendJson(res, 422, { error: 'Add a nearby street or landmark, or select a location pin on the map.' });
         const photoData = validatePhoto(body.photoData);
         const now = new Date().toISOString();
         const reports = readReports();
@@ -257,12 +266,14 @@ function createApp(options = {}) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'Method not allowed.' });
       let requested = pathname === '/' ? '/index.html' : pathname;
       if (requested === '/admin' || requested === '/admin/') requested = '/admin.html';
+      if (requested === '/report' || requested === '/report/') requested = '/report.html';
       const resolved = path.resolve(PUBLIC_DIR, `.${requested}`);
       if (!resolved.startsWith(`${PUBLIC_DIR}${path.sep}`) || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return sendJson(res, 404, { error: 'Page not found.' });
       const ext = path.extname(resolved).toLowerCase();
       const contentTypes = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon' };
       const file = fs.readFileSync(resolved);
-      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream', 'Content-Length': file.length, 'Cache-Control': ['.html', '.js', '.css'].includes(ext) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' });
+      const isAdminPage = requested === '/admin.html';
+      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream', 'Content-Length': file.length, 'Cache-Control': isAdminPage ? 'no-store' : (['.html', '.js', '.css'].includes(ext) ? 'no-cache' : 'public, max-age=3600'), 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' });
       return req.method === 'HEAD' ? res.end() : res.end(file);
     } catch (error) {
       if (!res.headersSent) return sendJson(res, error.statusCode || 500, { error: error.message || 'Unexpected server error.' });
@@ -280,8 +291,9 @@ function createApp(options = {}) {
 if (require.main === module) {
   const app = createApp();
   app.listen(PORT, HOST, () => {
-    console.log(`\nPilar360 is running: http://${HOST}:${PORT}`);
-    console.log('Reporter portal: /  |  Authority workspace: /admin');
+    console.log(`\nPilar360 is listening on ${HOST}:${PORT}`);
+    console.log(`Open locally: http://127.0.0.1:${PORT}`);
+    console.log('Project introduction: /  |  Reporter portal: /report  |  Authority workspace: /admin');
     console.log(`Authority password: ${process.env.PILAR360_ADMIN_PASSWORD ? 'configured' : 'NOT CONFIGURED — set PILAR360_ADMIN_PASSWORD'}`);
     console.log('Demo only — not connected to barangay or municipal services.\n');
   });

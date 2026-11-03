@@ -1,14 +1,16 @@
 {
   "name": "pilar-360-jerosh",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
-  "description": "Pilar 360 — a community issue reporting and tracking prototype for Barangay Marifosque, Pilar, Sorsogon.",
+  "description": "Pilar 360 \u2014 a community issue reporting and tracking prototype for Barangay Marifosque, Pilar, Sorsogon.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "MIT"
 }

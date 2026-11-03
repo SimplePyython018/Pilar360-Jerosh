@@ -1,57 +1,63 @@
 'use strict';
 
-/**
- * Pilar 360 — citizen issue reporting demo
- * Built by Jerosh. Uses Node.js built-ins only (no npm install required).
- * DEMO ONLY: no government integration, user authentication, or official dispatch.
- */
+/** Pilar360 — independent student demonstration prototype. */
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
+
+// Optional local configuration; production hosts should use their Environment settings.
+const localEnvPath = path.join(__dirname, '.env');
+if (fs.existsSync(localEnvPath)) {
+  for (const line of fs.readFileSync(localEnvPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^(["'])(.*)\1$/, '$2');
+  }
+}
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DEFAULT_DATA_FILE = path.join(ROOT, 'data', 'reports.json');
 const PORT = Number(process.env.PORT || 4173);
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 const MAX_BODY_BYTES = 6 * 1024 * 1024;
 const CATEGORIES = ['Road & Sidewalk', 'Waste & Cleanliness', 'Drainage & Flooding', 'Streetlight', 'Water & Utilities', 'Public Safety', 'Parks & Public Spaces', 'Other'];
 const STATUSES = ['Submitted', 'Under Review', 'Assigned', 'In Progress', 'Resolved', 'Closed'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Urgent'];
+const SESSION_COOKIE = 'pilar360_authority';
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 
 function isoHoursAgo(hours) { return new Date(Date.now() - hours * 3600000).toISOString(); }
 function seedReports() {
   const samples = [
-    { id: 'PIL-2026-0012', title: 'Pothole near the roadside', category: 'Road & Sidewalk', description: 'Demo sample: a pothole has formed near the road edge. Please inspect the area when possible.', barangay: 'Banuyo', address: 'Near the barangay hall', priority: 'High', status: 'In Progress', department: 'Municipal Engineering', lat: 12.9251, lng: 123.6740, createdAt: isoHoursAgo(5), updatedAt: isoHoursAgo(1), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(5) }, { status: 'Under Review', note: 'The demo team reviewed the report.', at: isoHoursAgo(4) }, { status: 'Assigned', note: 'Assigned to Municipal Engineering (demo).', at: isoHoursAgo(3) }, { status: 'In Progress', note: 'Sample status only; no real work order was created.', at: isoHoursAgo(1) }] },
+    { id: 'PIL-2026-0012', title: 'Pothole near the roadside', category: 'Road & Sidewalk', description: 'Demo sample: a pothole has formed near the road edge. Please inspect the area when possible.', barangay: 'Marifosque', address: 'Near the barangay hall', priority: 'High', status: 'In Progress', department: 'Municipal Engineering', lat: 12.9251, lng: 123.6740, createdAt: isoHoursAgo(5), updatedAt: isoHoursAgo(1), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(5) }, { status: 'Under Review', note: 'The demo team reviewed the report.', at: isoHoursAgo(4) }, { status: 'Assigned', note: 'Assigned to Municipal Engineering (demo).', at: isoHoursAgo(3) }, { status: 'In Progress', note: 'Sample status only; no real work order was created.', at: isoHoursAgo(1) }] },
     { id: 'PIL-2026-0011', title: 'Uncollected waste at collection point', category: 'Waste & Cleanliness', description: 'Demo sample: waste appears to have remained at the collection point after the expected pickup.', barangay: 'Marifosque', address: 'Near the public waiting shed', priority: 'Normal', status: 'Under Review', department: 'Municipal Environment', lat: 12.9217, lng: 123.6698, createdAt: isoHoursAgo(11), updatedAt: isoHoursAgo(3), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(11) }, { status: 'Under Review', note: 'Awaiting verification in this demo workflow.', at: isoHoursAgo(3) }] },
-    { id: 'PIL-2026-0010', title: 'Streetlight appears not to work', category: 'Streetlight', description: 'Demo sample: the streetlight near this location does not appear to turn on at night.', barangay: 'Binanuahan', address: 'Along the main road', priority: 'High', status: 'Assigned', department: 'General Services', lat: 12.9291, lng: 123.6810, createdAt: isoHoursAgo(26), updatedAt: isoHoursAgo(7), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(26) }, { status: 'Under Review', note: 'Sample inspection requested.', at: isoHoursAgo(20) }, { status: 'Assigned', note: 'Assigned to General Services (demo).', at: isoHoursAgo(7) }] },
-    { id: 'PIL-2026-0009', title: 'Blocked drainage after rainfall', category: 'Drainage & Flooding', description: 'Demo sample: leaves and debris may be obstructing a roadside drainage channel.', barangay: 'Banuyo', address: 'Near the covered court', priority: 'Urgent', status: 'Submitted', department: 'Unassigned', lat: 12.9276, lng: 123.6714, createdAt: isoHoursAgo(1), updatedAt: isoHoursAgo(1), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(1) }] },
+    { id: 'PIL-2026-0010', title: 'Streetlight appears not to work', category: 'Streetlight', description: 'Demo sample: the streetlight near this location does not appear to turn on at night.', barangay: 'Marifosque', address: 'Along the main road', priority: 'High', status: 'Assigned', department: 'General Services', lat: 12.9291, lng: 123.6810, createdAt: isoHoursAgo(26), updatedAt: isoHoursAgo(7), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(26) }, { status: 'Under Review', note: 'Sample inspection requested.', at: isoHoursAgo(20) }, { status: 'Assigned', note: 'Assigned to General Services (demo).', at: isoHoursAgo(7) }] },
+    { id: 'PIL-2026-0009', title: 'Blocked drainage after rainfall', category: 'Drainage & Flooding', description: 'Demo sample: leaves and debris may be obstructing a roadside drainage channel.', barangay: 'Marifosque', address: 'Near the covered court', priority: 'Urgent', status: 'Submitted', department: 'Unassigned', lat: 12.9276, lng: 123.6714, createdAt: isoHoursAgo(1), updatedAt: isoHoursAgo(1), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(1) }] },
     { id: 'PIL-2026-0008', title: 'Damaged sidewalk section', category: 'Road & Sidewalk', description: 'Demo sample: one sidewalk section appears uneven and may be difficult to pass.', barangay: 'Marifosque', address: 'Near a local store', priority: 'Low', status: 'Resolved', department: 'Municipal Engineering', lat: 12.9189, lng: 123.6761, createdAt: isoHoursAgo(80), updatedAt: isoHoursAgo(16), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(80) }, { status: 'Under Review', note: 'Sample report checked.', at: isoHoursAgo(70) }, { status: 'Resolved', note: 'Marked resolved for demo purposes only.', at: isoHoursAgo(16) }] },
-    { id: 'PIL-2026-0007', title: 'Water pooling on roadside', category: 'Drainage & Flooding', description: 'Demo sample: water tends to collect beside the road after heavy rain.', barangay: 'Binanuahan', address: 'Near the footpath', priority: 'Normal', status: 'Closed', department: 'Municipal Engineering', lat: 12.9314, lng: 123.6782, createdAt: isoHoursAgo(140), updatedAt: isoHoursAgo(45), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(140) }, { status: 'Closed', note: 'Closed in sample dataset.', at: isoHoursAgo(45) }] }
+    { id: 'PIL-2026-0007', title: 'Water pooling on roadside', category: 'Drainage & Flooding', description: 'Demo sample: water tends to collect beside the road after heavy rain.', barangay: 'Marifosque', address: 'Near the footpath', priority: 'Normal', status: 'Closed', department: 'Municipal Engineering', lat: 12.9314, lng: 123.6782, createdAt: isoHoursAgo(140), updatedAt: isoHoursAgo(45), reporter: 'Sample Resident', source: 'demo', photoData: null, timeline: [{ status: 'Submitted', note: 'Sample report created for prototype preview.', at: isoHoursAgo(140) }, { status: 'Closed', note: 'Closed in sample dataset.', at: isoHoursAgo(45) }] }
   ];
   return samples;
 }
 
-function safeEqual(a, b) { return a === b; }
-function sendJson(res, status, data) {
+
+function sendJson(res, status, data, headers = {}) {
   const body = JSON.stringify(data);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
   res.end(body);
 }
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
+    let tooLarge = false;
     req.on('data', chunk => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(Object.assign(new Error('Request body is too large. Keep photos under 4 MB.'), { statusCode: 413 }));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
+      if (size > MAX_BODY_BYTES) { tooLarge = true; return; }
+      if (!tooLarge) chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge) return reject(Object.assign(new Error('Request body is too large. Use a smaller photo (under 4 MB).'), { statusCode: 413 }));
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); }
       catch { reject(Object.assign(new Error('Request body must be valid JSON.'), { statusCode: 400 })); }
     });
@@ -73,46 +79,97 @@ function summarize(reports) {
   const submittedToday = reports.filter(r => new Date(r.createdAt).toDateString() === new Date().toDateString()).length;
   return { total: reports.length, active, resolved, urgent, submittedToday, resolutionRate: reports.length ? Math.round((resolved / reports.length) * 100) : 0, categories: CATEGORIES.map(category => ({ category, count: reports.filter(r => r.category === category).length })), statuses: STATUSES.map(status => ({ status, count: reports.filter(r => r.status === status).length })) };
 }
+function constantTimeEqual(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+function parseCookies(header = '') {
+  return Object.fromEntries(header.split(';').map(part => part.trim()).filter(Boolean).map(part => {
+    const index = part.indexOf('=');
+    return index < 0 ? [part, ''] : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+  }));
+}
+function publicReport(report) {
+  return {
+    id: report.id, title: report.title, category: report.category, barangay: report.barangay,
+    address: report.address || '', status: report.status, createdAt: report.createdAt,
+    updatedAt: report.updatedAt,
+    timeline: (report.timeline || []).map(item => ({ status: item.status, note: item.note, at: item.at }))
+  };
+}
 function createApp(options = {}) {
   const dataFile = options.dataFile || process.env.PILAR360_DATA_FILE || DEFAULT_DATA_FILE;
+  const adminPassword = options.adminPassword ?? process.env.PILAR360_ADMIN_PASSWORD ?? '';
+  const sessions = new Map();
+  const loginAttempts = new Map();
   fs.mkdirSync(path.dirname(dataFile), { recursive: true });
   if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify(seedReports(), null, 2));
+
   function readReports() {
     try {
       const value = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
       return Array.isArray(value) ? value : [];
     } catch (error) {
-      console.error('[Pilar 360] Unable to read data file:', error.message);
-      throw Object.assign(new Error('Report database could not be read. Check data/reports.json.'), { statusCode: 500 });
+      console.error('[Pilar360] Unable to read report data:', error.message);
+      throw Object.assign(new Error('The demo report file could not be read. Check data/reports.json.'), { statusCode: 500 });
     }
   }
   function writeReports(reports) {
-    const temp = `${dataFile}.${process.pid}.tmp`;
+    const temp = `${dataFile}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
     fs.writeFileSync(temp, JSON.stringify(reports, null, 2), { mode: 0o600 });
     fs.renameSync(temp, dataFile);
   }
+  function currentSession(req) {
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    const session = token && sessions.get(token);
+    if (!session) return null;
+    if (session.expiresAt < Date.now()) { sessions.delete(token); return null; }
+    session.expiresAt = Date.now() + SESSION_TTL_MS;
+    return { token, session };
+  }
+  function isAuthorized(req) { return Boolean(currentSession(req)); }
+  function unauthorized(res) { return sendJson(res, 401, { error: 'Authority access required. Please sign in again.' }); }
+  function clientIp(req) { return req.socket.remoteAddress || 'unknown'; }
+  function loginLimit(ip) {
+    const entry = loginAttempts.get(ip) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+    if (entry.resetAt <= Date.now()) { entry.count = 0; entry.resetAt = Date.now() + 15 * 60 * 1000; }
+    return entry;
+  }
+
   async function handler(req, res) {
-    const url = new URL(req.url, 'http://127.0.0.1');
-    const pathname = decodeURIComponent(url.pathname);
+    const url = new URL(req.url, 'http://localhost');
+    let pathname;
+    try { pathname = decodeURIComponent(url.pathname); }
+    catch { return sendJson(res, 400, { error: 'Invalid URL path.' }); }
     try {
-      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar 360', version: '1.0.0-demo', mode: 'prototype', now: new Date().toISOString() });
-      if (req.method === 'GET' && pathname === '/api/reports') {
-        let reports = readReports();
-        const status = cleanString(url.searchParams.get('status'), 50);
-        const category = cleanString(url.searchParams.get('category'), 80);
-        const q = cleanString(url.searchParams.get('q'), 200).toLowerCase();
-        if (status && status !== 'All') reports = reports.filter(r => r.status === status);
-        if (category && category !== 'All') reports = reports.filter(r => r.category === category);
-        if (q) reports = reports.filter(r => [r.id, r.title, r.description, r.barangay, r.address, r.category, r.department].some(v => String(v || '').toLowerCase().includes(q)));
-        reports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        return sendJson(res, 200, { reports, count: reports.length });
+      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.0.0-demo', mode: 'prototype', now: new Date().toISOString() });
+
+      if (req.method === 'GET' && pathname === '/api/admin/session') return sendJson(res, 200, { authenticated: isAuthorized(req), configured: Boolean(adminPassword) });
+      if (req.method === 'POST' && pathname === '/api/admin/login') {
+        if (!adminPassword) return sendJson(res, 503, { error: 'Authority password is not configured. Set PILAR360_ADMIN_PASSWORD in the server environment.' });
+        const ip = clientIp(req);
+        const attempts = loginLimit(ip);
+        if (attempts.count >= 8) return sendJson(res, 429, { error: 'Too many attempts. Try again after 15 minutes.' });
+        const body = await readBody(req);
+        if (!constantTimeEqual(cleanString(body.password, 200), adminPassword)) {
+          attempts.count += 1; attempts.resetAt = attempts.resetAt || Date.now() + 15 * 60 * 1000; loginAttempts.set(ip, attempts);
+          return sendJson(res, 401, { error: 'Incorrect authority password.' });
+        }
+        loginAttempts.delete(ip);
+        const token = crypto.randomBytes(32).toString('hex');
+        sessions.set(token, { createdAt: Date.now(), expiresAt: Date.now() + SESSION_TTL_MS });
+        const secure = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
+        const cookie = `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure ? '; Secure' : ''}`;
+        return sendJson(res, 200, { authenticated: true, expiresInSeconds: Math.floor(SESSION_TTL_MS / 1000) }, { 'Set-Cookie': cookie });
       }
-      if (req.method === 'GET' && pathname === '/api/stats') return sendJson(res, 200, summarize(readReports()));
-      if (req.method === 'GET' && pathname === '/api/export') {
-        const payload = JSON.stringify({ app: 'Pilar 360', exportType: 'DEMO_DATA', exportedAt: new Date().toISOString(), reports: readReports() }, null, 2);
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="pilar360-demo-export.json"', 'Content-Length': Buffer.byteLength(payload), 'X-Content-Type-Options': 'nosniff' });
-        return res.end(payload);
+      if (req.method === 'POST' && pathname === '/api/admin/logout') {
+        const active = currentSession(req);
+        if (active) sessions.delete(active.token);
+        return sendJson(res, 200, { authenticated: false }, { 'Set-Cookie': `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` });
       }
+
+      // Public reporting: a resident may submit a concern without seeing the authority inbox.
       if (req.method === 'POST' && pathname === '/api/reports') {
         const body = await readBody(req);
         const title = cleanString(body.title, 120);
@@ -120,22 +177,57 @@ function createApp(options = {}) {
         const category = cleanString(body.category, 80);
         const barangay = cleanString(body.barangay, 100);
         const address = cleanString(body.address, 240);
+        const reporter = cleanString(body.reporter, 80);
         const priority = PRIORITIES.includes(body.priority) ? body.priority : 'Normal';
         if (title.length < 5) return sendJson(res, 422, { error: 'Please enter a clear title with at least 5 characters.' });
         if (description.length < 15) return sendJson(res, 422, { error: 'Please add a description with at least 15 characters.' });
         if (!CATEGORIES.includes(category)) return sendJson(res, 422, { error: 'Choose a valid report category.' });
-        if (barangay.length < 2) return sendJson(res, 422, { error: 'Please select or enter a barangay.' });
-        const lat = body.lat === '' || body.lat == null ? null : Number(body.lat);
-        const lng = body.lng === '' || body.lng == null ? null : Number(body.lng);
-        if ((lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) || (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180))) return sendJson(res, 422, { error: 'The map coordinates are invalid.' });
+        if (barangay.toLowerCase() !== 'marifosque') return sendJson(res, 422, { error: 'This project currently accepts reports for Barangay Marifosque only.' });
+        if (reporter.length < 2) return sendJson(res, 422, { error: 'Please enter the name or display name of the reporter.' });
+        const latInput = body.lat === '' || body.lat == null ? null : Number(body.lat);
+        const lngInput = body.lng === '' || body.lng == null ? null : Number(body.lng);
+        if ((latInput === null) !== (lngInput === null)) return sendJson(res, 422, { error: 'Enter both latitude and longitude, or leave both blank.' });
+        if ((latInput !== null && (!Number.isFinite(latInput) || latInput < -90 || latInput > 90)) || (lngInput !== null && (!Number.isFinite(lngInput) || lngInput < -180 || lngInput > 180))) return sendJson(res, 422, { error: 'The map coordinates are invalid.' });
         const photoData = validatePhoto(body.photoData);
         const now = new Date().toISOString();
         const reports = readReports();
         const nextSequence = (reports.reduce((max, r) => Math.max(max, Number((String(r.id).match(/(\d+)$/) || [0, 0])[1])), 0) + 1).toString().padStart(4, '0');
-        const report = { id: `PIL-${new Date().getFullYear()}-${nextSequence}`, title, category, description, barangay, address, priority, status: 'Submitted', department: 'Unassigned', lat, lng, createdAt: now, updatedAt: now, reporter: cleanString(body.reporter, 80) || 'Community Member', source: 'user-demo', photoData, timeline: [{ status: 'Submitted', note: 'Report received by the local demo server. This is not an official LGU submission.', at: now }] };
+        const report = {
+          id: `PIL-${new Date().getFullYear()}-${nextSequence}`, title, category, description, barangay, address,
+          priority, status: 'Submitted', department: 'Unassigned', lat: latInput, lng: lngInput,
+          createdAt: now, updatedAt: now, reporter, source: 'resident-demo', photoData,
+          timeline: [{ status: 'Submitted', note: 'Your report was saved in the Pilar360 demonstration system. This is not an official LGU submission.', at: now }]
+        };
         reports.push(report);
         writeReports(reports);
-        return sendJson(res, 201, { report, message: 'Demo report saved. This is a prototype only, not an official municipal submission.' });
+        return sendJson(res, 201, { report: { id: report.id, status: report.status }, message: 'Demo report saved. Keep the report ID to check its status.' });
+      }
+      const trackMatch = pathname.match(/^\/api\/track\/([^/]+)$/);
+      if (req.method === 'GET' && trackMatch) {
+        const report = readReports().find(r => r.id.toLowerCase() === trackMatch[1].toLowerCase());
+        return report ? sendJson(res, 200, { report: publicReport(report) }) : sendJson(res, 404, { error: 'Report ID not found. Check the ID and try again.' });
+      }
+
+      // All other report records and management actions are authority-only.
+      const protectedPath = pathname === '/api/reports' || pathname === '/api/stats' || pathname === '/api/export' || pathname === '/api/demo/reset' || /^\/api\/reports\/[^/]+$/.test(pathname);
+      if (protectedPath && !isAuthorized(req)) return unauthorized(res);
+
+      if (req.method === 'GET' && pathname === '/api/reports') {
+        let reports = readReports();
+        const status = cleanString(url.searchParams.get('status'), 50);
+        const category = cleanString(url.searchParams.get('category'), 80);
+        const q = cleanString(url.searchParams.get('q'), 200).toLowerCase();
+        if (status && status !== 'All') reports = reports.filter(r => r.status === status);
+        if (category && category !== 'All') reports = reports.filter(r => r.category === category);
+        if (q) reports = reports.filter(r => [r.id, r.title, r.description, r.barangay, r.address, r.category, r.department, r.reporter].some(v => String(v || '').toLowerCase().includes(q)));
+        reports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        return sendJson(res, 200, { reports, count: reports.length });
+      }
+      if (req.method === 'GET' && pathname === '/api/stats') return sendJson(res, 200, summarize(readReports()));
+      if (req.method === 'GET' && pathname === '/api/export') {
+        const payload = JSON.stringify({ app: 'Pilar360', exportType: 'DEMO_DATA', exportedAt: new Date().toISOString(), reports: readReports() }, null, 2);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="pilar360-demo-export.json"', 'Content-Length': Buffer.byteLength(payload), 'Cache-Control': 'no-store' });
+        return res.end(payload);
       }
       const reportMatch = pathname.match(/^\/api\/reports\/([^/]+)$/);
       if (req.method === 'GET' && reportMatch) {
@@ -150,7 +242,7 @@ function createApp(options = {}) {
         if (index < 0) return sendJson(res, 404, { error: 'Report not found.' });
         const status = body.status;
         const department = cleanString(body.department, 100) || reports[index].department || 'Unassigned';
-        const note = cleanString(body.note, 500) || `Status updated to ${status} in the demo admin console.`;
+        const note = cleanString(body.note, 500) || `Status updated to ${status} in the Pilar360 demo. No official service action is implied.`;
         const at = new Date().toISOString();
         reports[index] = { ...reports[index], status, department, updatedAt: at, timeline: [...(reports[index].timeline || []), { status, note, at }].slice(-30) };
         writeReports(reports);
@@ -161,26 +253,26 @@ function createApp(options = {}) {
         return sendJson(res, 200, { message: 'The sample dataset has been restored.', stats: summarize(readReports()) });
       }
       if (pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'API endpoint not found.' });
+
       if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'Method not allowed.' });
-      const requested = pathname === '/' ? '/index.html' : pathname;
+      let requested = pathname === '/' ? '/index.html' : pathname;
+      if (requested === '/admin' || requested === '/admin/') requested = '/admin.html';
       const resolved = path.resolve(PUBLIC_DIR, `.${requested}`);
-      if (!resolved.startsWith(`${PUBLIC_DIR}${path.sep}`) && resolved !== path.join(PUBLIC_DIR, 'index.html')) return sendJson(res, 403, { error: 'Forbidden.' });
-      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return sendJson(res, 404, { error: 'Page not found.' });
+      if (!resolved.startsWith(`${PUBLIC_DIR}${path.sep}`) || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return sendJson(res, 404, { error: 'Page not found.' });
       const ext = path.extname(resolved).toLowerCase();
       const contentTypes = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon' };
       const file = fs.readFileSync(resolved);
-      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream', 'Content-Length': file.length, 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream', 'Content-Length': file.length, 'Cache-Control': ['.html', '.js', '.css'].includes(ext) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' });
       return req.method === 'HEAD' ? res.end() : res.end(file);
     } catch (error) {
-      if (!res.headersSent) sendJson(res, error.statusCode || 500, { error: error.message || 'Unexpected server error.' });
-      else res.destroy();
+      if (!res.headersSent) return sendJson(res, error.statusCode || 500, { error: error.message || 'Unexpected server error.' });
+      return res.destroy();
     }
   }
   return http.createServer((req, res) => {
-    // Small, deliberate safety headers for this local prototype.
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Permissions-Policy', 'geolocation=(self)');
-    res.setHeader('Content-Security-Policy', "default-src 'self' https://unpkg.com https://*.tile.openstreetmap.org; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy', "default-src 'self' https://unpkg.com https://*.tile.openstreetmap.org; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
     handler(req, res);
   });
 }
@@ -188,13 +280,11 @@ function createApp(options = {}) {
 if (require.main === module) {
   const app = createApp();
   app.listen(PORT, HOST, () => {
-    console.log(`\nPilar 360 is running: http://${HOST}:${PORT}`);
-    console.log('Prototype only — reports are stored locally in data/reports.json.');
-    console.log('Press Ctrl+C to stop.\n');
+    console.log(`\nPilar360 is running: http://${HOST}:${PORT}`);
+    console.log('Reporter portal: /  |  Authority workspace: /admin');
+    console.log(`Authority password: ${process.env.PILAR360_ADMIN_PASSWORD ? 'configured' : 'NOT CONFIGURED — set PILAR360_ADMIN_PASSWORD'}`);
+    console.log('Demo only — not connected to barangay or municipal services.\n');
   });
-  app.on('error', error => {
-    console.error('[Pilar 360] Server error:', error.message);
-    process.exitCode = 1;
-  });
+  app.on('error', error => { console.error('[Pilar360] Server error:', error.message); process.exitCode = 1; });
 }
 module.exports = { createApp, seedReports, summarize, CATEGORIES, STATUSES, PRIORITIES };

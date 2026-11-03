@@ -1,119 +1,102 @@
-# Pilar 360 — Jerosh's Community Reporting Prototype
+# Pilar360 — Community Issue Reporting Prototype
 
-**A modern civic issue-reporting demo for Pilar, Sorsogon. Designed & built by Jerosh.**
+**Pilar360** is an independent Grade 12 project prototype for Barangay Marifosque, Pilar, Sorsogon. It demonstrates two separate experiences: a public portal for submitting and tracking a report, and a password-protected authority workspace for reviewing reports and recording demo status updates.
 
-Pilar 360 is a responsive web prototype for recording community issues such as damaged roads, uncollected waste, blocked drainage, broken streetlights, and public-space concerns. Residents can create a report, attach a photo, add a barangay/landmark and optional coordinates, and receive a locally generated report ID. A demo coordinator can change the status and assignment, while the report keeps an activity timeline.
+> **Important:** Pilar360 is a student demonstration, not an official Barangay Marifosque or Municipality of Pilar service. Reports are saved by this demo server only. No barangay or municipal office is automatically notified, no official case number is issued, and no repair or response is guaranteed. Do not collect real residents' personal information or use it for public-service operations without school approval, barangay/LGU permission, and proper privacy/security review.
 
-> **Important:** This is an independent student/developer prototype, not an official Municipality of Pilar application. The sample reports and coordinates are fictional/approximate. Submissions are saved only to the local project's JSON file. No report is delivered to an LGU, no official case number is issued, and this system must not be used for emergencies.
+## What changed in version 2.0
 
-## Features
-
-- Responsive civic dashboard with overview metrics and category breakdowns.
-- Report creation with category, description, barangay, landmark, priority suggestion, optional image, and optional browser geolocation.
-- Local report IDs, search, status/category filters, detail view, and activity timeline.
-- Demo coordinator controls for status and department updates.
-- Map pins using Leaflet + OpenStreetMap tiles when internet is available; the rest of the UI works locally if the map tiles cannot load.
-- Insights, JSON data export, and sample-data reset.
-- Native Node.js API, input validation, request-size limits, safe static file handling, and built-in smoke tests.
-- No npm dependencies required.
+- Separate **Resident Portal** (`/`) from **Authority Workspace** (`/admin`).
+- Residents can submit a concern, add a display name, landmark, optional photo, and optional location coordinates.
+- A successful submission returns a report ID; residents can use that ID to check the public status timeline.
+- The public tracker does not reveal reporter names, exact coordinates, photos, or the full report inbox.
+- The authority workspace requires a server-side password sign-in. Report lists, statistics, exports, report details, status updates, and reset actions are protected by an HTTP-only session cookie.
+- The authority inbox shows the reporter name and reported location. The Community Map displays records that include valid latitude and longitude.
+- The map now handles page resizing and desktop/tablet/mobile layout changes more carefully. A readable fallback remains when map tiles cannot load.
+- Report validation requires a name, a complete issue description, and either both coordinates or neither coordinate.
+- Automated tests now cover public submission, private authority access, status tracking, and report updates.
 
 ## Quick start
 
-**Requirements:** Node.js 18+ (Node.js 20 or 22 recommended). No `npm install` step is needed.
-
-### Windows
+**Requirements:** Node.js 18 or newer. No `npm install` is required.
 
 1. Extract the ZIP.
-2. Open the project folder.
-3. Double-click `run.bat`, or open Command Prompt/PowerShell in this folder and run:
+2. In the project folder, copy `.env.example` to `.env`.
+3. Open `.env` and set the authority password:
+
+   ```env
+   PILAR360_ADMIN_PASSWORD=choose-a-private-demo-password
+   ```
+
+4. Start the app:
 
    ```bash
    npm start
    ```
 
-4. Open <http://127.0.0.1:4173> in your browser.
+5. Open `http://127.0.0.1:4173` for the public report portal.
+6. Open `http://127.0.0.1:4173/admin` for the authority workspace and enter the password configured in `.env`.
 
-### Linux / macOS / Termux
+### Windows PowerShell alternative
+
+If you do not want to create a `.env` file, set the password for the current terminal session and start the server:
+
+```powershell
+$env:PILAR360_ADMIN_PASSWORD="your-private-demo-password"
+npm start
+```
+
+### Termux / Linux / macOS
 
 ```bash
 cd Pilar360_Jerosh
-chmod +x run.sh
-./run.sh
+cp .env.example .env
+nano .env
+npm start
 ```
 
-Or use `node server.js` / `npm start`. To stop the server, press `Ctrl+C` in the terminal.
+To stop the server, press `Ctrl+C`.
 
-If port 4173 is already in use:
+## Hosting setup
 
-```bash
-PORT=4174 npm start
+For a hosted demo, set the environment variable `PILAR360_ADMIN_PASSWORD` in the hosting provider's server settings. Do not put the password in `public/admin-app.js`, HTML, or a committed GitHub file. The hosted server must support Node.js and serve the app and API from the same origin. If using Render, set the variable under the web service's **Environment** settings, then redeploy. Keep `HOST=0.0.0.0` if your service configuration requires it.
+
+The JSON data file may not survive a host restart or redeploy when the platform uses an ephemeral filesystem. A persistent disk/database is needed to preserve real data reliably; this prototype does not configure one. Use fictional records for a class demonstration.
+
+## Map and device support
+
+The layouts adapt to mobile phones, tablets, laptops, and desktop browsers. The report forms and status tracker work without the map. Interactive map tiles use Leaflet and OpenStreetMap and require an internet connection. Browser location permission is optional; a landmark can be entered instead. Map coordinates are user-provided and are not automatically verified.
+
+## Main files
+
+```text
+Pilar360_Jerosh/
+├── server.js                 # Node.js API, report storage, authority sessions
+├── package.json
+├── .env.example              # Copy to .env and set the demo authority password
+├── public/
+│   ├── index.html            # Public resident portal
+│   ├── reporter.css          # Resident portal responsive styles
+│   ├── reporter.js           # Report submission and public status tracking
+│   ├── admin.html            # Authority workspace and sign-in gate
+│   ├── admin-styles.css      # Authority workspace styles
+│   ├── admin-app.js          # Authority views, report inbox, map and updates
+│   └── favicon.svg
+├── data/reports.json         # Created automatically; ignored by Git
+├── tests/smoke-test.js       # Automated API and access-control tests
+├── API.md
+├── ARCHITECTURE.md
+└── DEFENSE_GUIDE.md
 ```
 
-Then open <http://127.0.0.1:4174>.
-
-## Test the API
-
-Run the server in one terminal, then open another terminal in the project folder:
+## Test the project
 
 ```bash
 npm test
 ```
 
-The smoke test starts an isolated temporary server and checks health, report listing, validation, create/update workflow, and JSON export. It does not modify the project's saved data.
+The test creates a temporary data file and checks the main user and authority workflows. It does not change the project's normal `data/reports.json` file.
 
-## Project structure
+## Project boundary
 
-```text
-Pilar360_Jerosh/
-├── server.js                 # Native Node.js HTTP server + REST API
-├── package.json              # start/dev/test scripts; zero runtime dependencies
-├── public/
-│   ├── index.html            # App shell and navigation
-│   ├── styles.css            # Responsive visual system
-│   ├── app.js                # Frontend state, forms, filters, maps, API calls
-│   └── favicon.svg
-├── data/
-│   ├── .gitkeep              # Keeps the data directory in Git
-│   └── reports.json          # Generated on first launch; ignored by Git
-├── tests/
-│   └── smoke-test.js         # Automated API smoke test
-├── ARCHITECTURE.md           # Architecture and route reference
-├── API.md                    # REST API examples
-├── run.sh
-└── run.bat
-```
-
-## GitHub upload
-
-1. Create a new repository on GitHub (for example, `pilar-360-jerosh`).
-2. Extract this ZIP locally.
-3. Upload the files **inside** the `Pilar360_Jerosh` folder to the repository root, or run these commands inside the extracted folder:
-
-   ```bash
-   git init
-   git add .
-   git commit -m "Build Pilar 360 community reporting prototype"
-   git branch -M main
-   git remote add origin https://github.com/YOUR-USERNAME/pilar-360-jerosh.git
-   git push -u origin main
-   ```
-
-   Replace `YOUR-USERNAME` with your own GitHub username and use the actual repository URL from GitHub. Do not commit personal/real complaint data.
-
-**GitHub Pages note:** This is a full-stack Node.js prototype, so simply enabling GitHub Pages will not run the API or save reports. Run it locally or deploy the backend to a trusted Node.js host after adding production-grade authentication, privacy controls, storage, monitoring, and LGU approval.
-
-## Security and production boundary
-
-This build is for local demonstration and learning only. It intentionally has **no authentication or role-based access control**, and the coordinator endpoints can be called by anyone who can access the server. The default host is `127.0.0.1`, limiting access to the same device. Do not expose this server to a public internet or collect real personal information. The local JSON store is not a substitute for a secured database, access-control policy, backup plan, or approved government case-management system.
-
-For real deployment, work with the Municipality of Pilar and add authenticated accounts, least-privilege roles, audit logging, secure media storage, rate limiting, spam/abuse detection, data retention/deletion policy, backups, monitoring, verified department routing, HTTPS, incident response, and a formal privacy notice/consent flow. Remove fictional seed data before any controlled test with an authorized partner.
-
-## Research and inspiration
-
-The interaction model was informed by publicly described citizen-service/reporting concepts, without copying another application's code or claiming affiliation:
-
-- [City of Naga — MyNaga app announcement](https://www2.naga.gov.ph/available-mynaga-app/) — city service access and community-issue reporting.
-- [311 Philippines — overview](https://my311.ph/about/) — photos, location pins, non-emergency issue tracking, and service coordination.
-- [Municipality of Pilar, Sorsogon — official website](https://www.pilarsor.gov.ph/) — official municipal online information.
-
-**Project credit:** Designed and built by Jerosh as an independent prototype.
+Pilar360 is an independent student-developed prototype. It is not officially owned, approved, or operated by a barangay or local government office. The authority workspace is a demonstration of restricted access, not a production-grade identity system. Production use would require formal LGU approval, individual authorized accounts, stronger password management, durable database and file storage, audit logging, privacy notice/consent, backup and retention rules, abuse protection, monitoring, and security testing.

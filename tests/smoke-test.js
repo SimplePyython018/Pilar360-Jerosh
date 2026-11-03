@@ -6,90 +6,79 @@ const os = require('node:os');
 const path = require('node:path');
 const { createApp, seedReports } = require('../server');
 
-test('Pilar 360 API smoke test: health, validation, create, update, export', async t => {
+test('Pilar360 public reporting, private authority access, tracking, map data and status workflow', async t => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pilar360-test-'));
   const dataFile = path.join(tempDir, 'reports.json');
   fs.writeFileSync(dataFile, JSON.stringify(seedReports(), null, 2));
-  const server = createApp({ dataFile });
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  const base = `http://127.0.0.1:${address.port}`;
-  t.after(async () => {
-    await new Promise(resolve => server.close(resolve));
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
+  const server = createApp({ dataFile, adminPassword: 'unit-test-secret' });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  t.after(async () => { await new Promise(resolve => server.close(resolve)); fs.rmSync(tempDir, { recursive: true, force: true }); });
+  const call = (url, options = {}) => fetch(`${base}${url}`, options);
+  const json = (method, body, cookie) => ({ method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
 
-  const healthResponse = await fetch(`${base}/api/health`);
-  assert.equal(healthResponse.status, 200);
-  assert.equal((await healthResponse.json()).ok, true);
+  const health = await call('/api/health');
+  assert.equal(health.status, 200); assert.equal((await health.json()).ok, true);
+  const session = await call('/api/admin/session');
+  assert.deepEqual(await session.json(), { authenticated: false, configured: true });
 
-  const listResponse = await fetch(`${base}/api/reports`);
-  assert.equal(listResponse.status, 200);
-  const initial = await listResponse.json();
-  assert.equal(initial.count, 6);
-  assert.ok(initial.reports.some(report => report.id === 'PIL-2026-0012'));
+  const privateList = await call('/api/reports');
+  assert.equal(privateList.status, 401, 'report list must be authority-only');
+  const privateStats = await call('/api/stats');
+  assert.equal(privateStats.status, 401, 'statistics must be authority-only');
 
-  const invalidResponse = await fetch(`${base}/api/reports`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: 'bad', category: 'Unknown', description: 'too short', barangay: '' })
-  });
-  assert.equal(invalidResponse.status, 422);
-  assert.match((await invalidResponse.json()).error, /title/i);
+  const invalid = await call('/api/reports', json('POST', { title: 'bad', category: 'Unknown', description: 'too short', barangay: '' }));
+  assert.equal(invalid.status, 422);
 
-  const createResponse = await fetch(`${base}/api/reports`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: 'Smoke test streetlight', category: 'Streetlight', description: 'The streetlight is not working near the test location.', barangay: 'Banuyo', address: 'Test landmark', priority: 'Normal', lat: 12.9251, lng: 123.6740, reporter: 'Test runner' })
-  });
-  assert.equal(createResponse.status, 201);
-  const created = (await createResponse.json()).report;
-  assert.match(created.id, /^PIL-\d{4}-\d{4}$/);
-  assert.equal(created.status, 'Submitted');
+  const unpairedCoordinates = await call('/api/reports', json('POST', { title: 'Streetlight issue near court', category: 'Streetlight', description: 'The streetlight has not been working near the covered court.', barangay: 'Marifosque', reporter: 'Test Resident', lat: 12.92 }));
+  assert.equal(unpairedCoordinates.status, 422);
 
-  const updateResponse = await fetch(`${base}/api/reports/${created.id}`, {
-    method: 'PATCH', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ status: 'In Progress', department: 'General Services', note: 'Smoke test status update.' })
-  });
-  assert.equal(updateResponse.status, 200);
-  const updated = (await updateResponse.json()).report;
-  assert.equal(updated.status, 'In Progress');
-  assert.equal(updated.department, 'General Services');
-  assert.equal(updated.timeline.at(-1).note, 'Smoke test status update.');
+  const outOfScope = await call('/api/reports', json('POST', { title: 'Streetlight in another area', category: 'Streetlight', description: 'This report is outside the selected project barangay.', barangay: 'Banuyo', reporter: 'Test Resident' }));
+  assert.equal(outOfScope.status, 422, 'public submissions must stay within the selected barangay');
 
-  const statsResponse = await fetch(`${base}/api/stats`);
-  assert.equal(statsResponse.status, 200);
-  const stats = await statsResponse.json();
-  assert.equal(stats.total, 7);
-  assert.equal(stats.active, 5);
+  const create = await call('/api/reports', json('POST', { title: 'Smoke test streetlight', category: 'Streetlight', description: 'The streetlight is not working near the test location.', barangay: 'Marifosque', address: 'Near test waiting shed', priority: 'Normal', lat: 12.9251, lng: 123.6740, reporter: 'Test Resident' }));
+  assert.equal(create.status, 201);
+  const created = (await create.json()).report;
+  assert.match(created.id, /^PIL-\d{4}-\d{4}$/); assert.equal(created.status, 'Submitted');
 
-  const exportResponse = await fetch(`${base}/api/export`);
+  const track = await call(`/api/track/${created.id}`);
+  assert.equal(track.status, 200);
+  const publicTrack = (await track.json()).report;
+  assert.equal(publicTrack.status, 'Submitted');
+  assert.equal('reporter' in publicTrack, false, 'public tracker must not disclose reporter identity');
+  assert.equal('lat' in publicTrack, false, 'public tracker must not disclose exact coordinates');
+
+  const wrongLogin = await call('/api/admin/login', json('POST', { password: 'wrong' }));
+  assert.equal(wrongLogin.status, 401);
+  const login = await call('/api/admin/login', json('POST', { password: 'unit-test-secret' }));
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+
+  const authorizedList = await call('/api/reports', { headers: { cookie } });
+  assert.equal(authorizedList.status, 200);
+  const reports = (await authorizedList.json()).reports;
+  assert.ok(reports.some(r => r.id === created.id && r.reporter === 'Test Resident' && r.lat === 12.9251));
+
+  const unauthorizedUpdate = await call(`/api/reports/${created.id}`, json('PATCH', { status: 'Resolved' }));
+  assert.equal(unauthorizedUpdate.status, 401);
+  const update = await call(`/api/reports/${created.id}`, json('PATCH', { status: 'In Progress', department: 'Barangay Coordination', note: 'Demo status updated for testing.' }, cookie));
+  assert.equal(update.status, 200);
+  const updated = (await update.json()).report;
+  assert.equal(updated.status, 'In Progress'); assert.equal(updated.department, 'Barangay Coordination');
+
+  const trackedAgain = await call(`/api/track/${created.id}`);
+  assert.equal((await trackedAgain.json()).report.status, 'In Progress');
+  assert.equal((await call('/api/export')).status, 401);
+  const exportResponse = await call('/api/export', { headers: { cookie } });
   assert.equal(exportResponse.status, 200);
-  assert.match(exportResponse.headers.get('content-disposition'), /pilar360-demo-export\.json/);
-  const exportPayload = await exportResponse.json();
-  assert.equal(exportPayload.reports.length, 7);
+  const exported = await exportResponse.json(); assert.ok(exported.reports.some(r => r.id === created.id));
 
-  const filteredResponse = await fetch(`${base}/api/reports?status=In%20Progress`);
-  assert.equal(filteredResponse.status, 200);
-  assert.equal((await filteredResponse.json()).reports.length, 2);
+  const logout = await call('/api/admin/logout', json('POST', {}, cookie));
+  assert.equal(logout.status, 200);
+  assert.equal((await call('/api/reports', { headers: { cookie } })).status, 401);
 
-  const missingResponse = await fetch(`${base}/api/reports/DOES-NOT-EXIST`);
-  assert.equal(missingResponse.status, 404);
-
-  const invalidUpdateResponse = await fetch(`${base}/api/reports/${created.id}`, {
-    method: 'PATCH', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ status: 'Teleporting' })
-  });
-  assert.equal(invalidUpdateResponse.status, 422);
-
-  const resetResponse = await fetch(`${base}/api/demo/reset`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
-  });
-  assert.equal(resetResponse.status, 200);
-  assert.equal((await resetResponse.json()).stats.total, 6);
-
-  const staticResponse = await fetch(`${base}/`);
-  assert.equal(staticResponse.status, 200);
-  assert.match(await staticResponse.text(), /Pilar 360/);
+  assert.equal((await call('/')).status, 200);
+  assert.match(await (await call('/')).text(), /Submit a report/);
+  assert.equal((await call('/admin')).status, 200);
+  assert.match(await (await call('/admin')).text(), /Authority sign in/);
 });

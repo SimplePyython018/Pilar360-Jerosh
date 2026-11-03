@@ -1,81 +1,63 @@
-# Pilar 360 — Architecture Notes
+# Pilar360 — architecture notes (version 2.0)
 
-## 1. System view
+## System overview
 
 ```text
-┌───────────────────────────────────┐
-│ Browser / Mobile browser          │
-│ index.html + styles.css + app.js  │
-│ Dashboard · Reports · Map         │
-│ Insights · Workspace              │
-└─────────────────┬─────────────────┘
-                  │ same-origin JSON/HTTP
-                  ▼
-┌───────────────────────────────────┐
-│ Node.js native HTTP server         │
-│ server.js                         │
-│ Routing · validation · size limit │
-│ report lifecycle · static assets  │
-└─────────────────┬─────────────────┘
-                  │ atomic JSON-file rewrite
-                  ▼
-┌───────────────────────────────────┐
-│ data/reports.json                 │
-│ demo seed records + local reports │
-│ optional photo data URLs          │
-└───────────────────────────────────┘
+Resident browser (phone / tablet / PC)
+  ├─ Public portal: submit report + track report ID
+  └─ Authority portal: sign-in + private report inbox + map + updates
+                 │ same-origin HTTPS/HTTP JSON API
+                 ▼
+            Node.js server
+  ├─ Public report creation and limited tracking
+  ├─ Authority password sign-in and session cookie
+  ├─ Access checks for report list/details/stats/export/update/reset
+  └─ Input validation and JSON persistence
+                 │
+                 ▼
+          data/reports.json
 
-External map tiles (optional): Leaflet + OpenStreetMap; no map tiles are served by this project.
+Optional map layer: Leaflet + OpenStreetMap tiles (internet required)
 ```
 
-## 2. Design choices
+## Roles
 
-- **Zero runtime dependencies:** The server uses Node.js built-in `http`, `fs`, `path`, and `crypto` modules. This reduces setup friction and makes the demo easy to inspect.
-- **Separation of concerns:** `server.js` handles data validation and persistence; `public/app.js` handles client state and presentation; `public/styles.css` defines design tokens and responsive behavior.
-- **Local persistence:** The JSON repository is intentionally simple for a prototype. Updates write to a temporary file and rename it to reduce partial-write risk.
-- **Progress visibility:** Each report has a status and timeline events. This models a review/assignment/progress/resolution workflow, but no real municipal office is notified.
-- **Graceful map degradation:** The interface still works if map assets are offline. Location values are optional, and demo coordinates should not be interpreted as verified boundaries or accurate incidents.
-- **Default local binding:** The server listens on `127.0.0.1`. This avoids exposing the unauthenticated coordinator endpoints to other devices by default.
+### Resident / Reporter
 
-## 3. Domain model
+- Opens `/`.
+- Submits the issue title, category, description, barangay, optional landmark, optional photo, and optional coordinates.
+- Receives a local report ID.
+- Uses that ID to view the limited public status timeline.
+- Cannot browse all reports or see reporter names and exact coordinates.
 
-A report record contains:
+### Authority / Demo Coordinator
 
-| Field | Purpose |
-|---|---|
-| `id` | Local prototype identifier (`PIL-YYYY-NNNN`) |
-| `title`, `description` | Issue summary and user-provided details |
-| `category`, `priority` | Issue classification and suggested priority |
-| `barangay`, `address` | User-provided area and landmark |
-| `lat`, `lng` | Optional numeric coordinates |
-| `photoData` | Optional validated PNG/JPEG/WebP data URL |
-| `status` | Submitted → Under Review → Assigned → In Progress → Resolved/Closed |
-| `department` | Demo assignment, not an official routing destination |
-| `createdAt`, `updatedAt` | ISO timestamp values |
-| `timeline` | Append-only-style list of demo status notes |
-| `reporter`, `source` | Demo display label and origin indicator |
+- Opens `/admin` and signs in.
+- Reviews all submitted records, including reporter display name, reported landmark, coordinates, and optional photo.
+- Uses the report list and filters to find an item.
+- Uses Community Map to inspect valid coordinate pins.
+- Opens a report detail to record a new demo status and note.
+- Can export JSON or restore fictional seed data.
 
-## 4. API route summary
+## Data and access controls
 
-- `GET /api/health` — service health and demo mode.
-- `GET /api/reports` — all reports; optional `q`, `status`, and `category` query filters.
-- `GET /api/reports/:id` — one report.
-- `POST /api/reports` — validate and save a new report.
-- `PATCH /api/reports/:id` — update status, department, and add a timeline note (demo coordinator control).
-- `GET /api/stats` — counts by status and category.
-- `GET /api/export` — JSON download.
-- `POST /api/demo/reset` — restore the fictional sample records.
+The Node.js server stores records in a JSON file for the small classroom prototype. The authority password is read from `PILAR360_ADMIN_PASSWORD`; it is never placed in frontend JavaScript. A successful login creates a random server-side session and an HTTP-only, SameSite=Strict cookie. The private report APIs verify that session on every request.
 
-See `API.md` for request examples.
+The public tracking endpoint returns a deliberately limited view and excludes reporter identity, exact latitude/longitude, uploaded photo, and full description. The authority endpoints return the full record only after authentication.
 
-## 5. Known limitations / next architecture stage
+This is a demonstration-level control. Sessions are stored in server memory and are lost after restart. A production deployment needs individual staff accounts, secure password hashing and rotation, stronger session management, CSRF and abuse controls, audit logs, database/object storage, privacy and retention policies, monitoring, backups, and official LGU authorization.
 
-1. No authentication, user sessions, or role permissions.
-2. JSON storage is not designed for concurrent production traffic or large photo libraries.
-3. No official LGU integration, SMS/email notifications, service-level agreements, or assigned-office guarantees.
-4. No automated geocoding or barangay boundary validation.
-5. No moderation workflow for abusive reports or privacy-sensitive imagery.
-6. Map tiles need internet access; OpenStreetMap tile usage must follow their current usage policy.
-7. No production monitoring, backup/restore automation, or data retention enforcement.
+## Map behavior
 
-Before a real pilot, obtain written LGU approval and implement production identity/security, a database, object storage, access controls, audit logs, a privacy notice, retention/deletion controls, observability, backup/restore testing, and emergency-report disclaimers appropriate to the municipality.
+The map plots only records with both valid latitude and longitude. It fits map bounds to the submitted points and recalculates its size after layout changes to support desktop, tablet, and phone views. Map tiles are external and require internet. If Leaflet or map tiles cannot load, the map panel shows a fallback message while the report list, location text, and coordinate links remain available.
+
+Coordinates are entered by the reporter or captured with browser location permission. They are not geocoded or independently checked. A reported pin should be treated as approximate unless verified.
+
+## Known limitations
+
+1. No connection to Barangay Marifosque or the Municipality of Pilar.
+2. No official report number, dispatch, notification, or repair guarantee.
+3. JSON storage is for a small demo; concurrent edits and large photo collections need a proper database and object storage.
+4. Hosted filesystems may be temporary unless persistent storage is configured.
+5. OpenStreetMap map tiles require internet and must be used according to the tile provider's policy.
+6. No official privacy impact assessment or resident consent process has been completed.

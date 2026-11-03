@@ -3,55 +3,67 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101d2b">
-  <meta name="description" content="Pilar 360 — a modern community issue reporting prototype for Pilar, Sorsogon. Built by Jerosh.">
-  <title>Pilar 360 — Community Reporting</title>
+  <meta name="theme-color" content="#102033">
+  <meta name="description" content="Pilar360 community issue reporting prototype for Barangay Marifosque, Pilar, Sorsogon.">
+  <title>Pilar360 — Community Report Portal</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css">
-  <script defer src="/app.js"></script>
+  <link rel="stylesheet" href="/reporter.css">
+  <script defer src="/reporter.js"></script>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar" id="sidebar">
-      <a class="brand" href="#dashboard" aria-label="Pilar 360 dashboard">
-        <span class="brand-mark"><span>360</span><i></i></span>
-        <span class="brand-copy"><strong>PILAR<span>360</span></strong><small>COMMUNITY SIGNAL</small></span>
-      </a>
-      <div class="workspace-label">WORKSPACE</div>
-      <nav class="main-nav" aria-label="Main navigation">
-        <button class="nav-item active" data-page="dashboard"><span class="nav-icon">◫</span><span>Overview</span></button>
-        <button class="nav-item" data-page="reports"><span class="nav-icon">▤</span><span>Issue reports</span><span class="nav-count" id="navReportCount">—</span></button>
-        <button class="nav-item" data-page="map"><span class="nav-icon">⌖</span><span>Community map</span></button>
-        <button class="nav-item" data-page="insights"><span class="nav-icon">▥</span><span>Insights</span></button>
-        <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span>Workspace & settings</span></button>
-      </nav>
-      <div class="sidebar-bottom">
-        <div class="sidebar-note"><span class="pulse-dot"></span><div><strong>Prototype environment</strong><small>Local demo data only</small></div></div>
-        <div class="profile-mini"><div class="avatar">J</div><div class="profile-label"><strong>Jerosh</strong><small>Builder workspace</small></div><span class="profile-dots">•••</span></div>
-        <div class="side-credit">DESIGNED & BUILT BY <strong>JEROSH</strong><br><span>Independent prototype · v1.0</span></div>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Pilar360 home"><span class="brand-mark">360</span><span><strong>PILAR<span>360</span></strong><small>COMMUNITY REPORT PORTAL</small></span></a>
+    <a class="authority-link" href="/admin">Authority access <span aria-hidden="true">↗</span></a>
+  </header>
+  <main class="container">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span> BARANGAY MARIFOSQUE · PILAR, SORSOGON</div>
+        <h1>Report a concern.<br><em>Follow its progress.</em></h1>
+        <p>Pilar360 is a student-built demonstration that gives residents another way to record community concerns and check the status saved in the demo system.</p>
+        <div class="hero-points"><span>✓ Submit a concern</span><span>✓ Keep a report ID</span><span>✓ Check status updates</span></div>
       </div>
-    </aside>
+      <div class="hero-card"><div class="hero-card-icon">⌖</div><strong>Your report, in one place.</strong><p>Enter a nearby landmark or share your location so the demo authority view can display the report on its map.</p><span class="demo-label">STUDENT PROTOTYPE · DEMO ONLY</span></div>
+    </section>
 
-    <div class="mobile-scrim" id="mobileScrim"></div>
-    <main class="main-area">
-      <header class="topbar">
-        <div class="topbar-left">
-          <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu">☰</button>
-          <div class="crumb"><span>Civic operations</span><b>/</b><strong id="crumbCurrent">Overview</strong></div>
+    <nav class="portal-tabs" aria-label="Portal actions">
+      <button class="portal-tab active" type="button" data-tab="submit">＋ Submit a report</button>
+      <button class="portal-tab" type="button" data-tab="track">⌕ Check report status</button>
+    </nav>
+
+    <section class="portal-panel" id="submitPanel">
+      <div class="section-heading"><div><div class="eyebrow">NEW COMMUNITY CONCERN</div><h2>Report an issue</h2><p>Complete the details below. Fields marked * are required.</p></div><span class="step-number">01 / 02</span></div>
+      <form id="reportForm" novalidate>
+        <div class="form-grid">
+          <label class="field full"><span>Reporter name / display name <b>*</b></span><input name="reporter" id="reporter" required maxlength="80" placeholder="Enter your name" autocomplete="name"><small>This name will be visible only in the authority demo workspace. Do not enter private contact details.</small></label>
+          <label class="field"><span>Issue title <b>*</b></span><input name="title" id="title" required minlength="5" maxlength="120" placeholder="e.g. Damaged road near waiting shed"></label>
+          <label class="field"><span>Category <b>*</b></span><select name="category" id="category" required><option value="Road & Sidewalk">Road & Sidewalk</option><option>Waste & Cleanliness</option><option>Drainage & Flooding</option><option>Streetlight</option><option>Water & Utilities</option><option>Public Safety</option><option>Parks & Public Spaces</option><option>Other</option></select></label>
+          <label class="field"><span>Barangay</span><input value="Marifosque" readonly aria-readonly="true"><small>This project currently focuses on Barangay Marifosque.</small></label>
+          <label class="field"><span>Nearby street / landmark</span><input name="address" id="address" maxlength="240" placeholder="e.g. Near the barangay hall"></label>
+          <label class="field full"><span>Describe the concern <b>*</b></span><textarea name="description" id="description" required minlength="15" maxlength="1600" rows="4" placeholder="Describe what happened and the exact area. Do not include sensitive personal information."></textarea></label>
+          <div class="field full"><span>Location pin <small class="optional">· optional</small></span><div class="coordinate-row"><input id="latitude" inputmode="decimal" placeholder="Latitude" aria-label="Latitude"><input id="longitude" inputmode="decimal" placeholder="Longitude" aria-label="Longitude"><button class="button button-light" type="button" id="locateButton">⌖ Use my location</button></div><small>Allow location access when your browser asks. You may leave this blank and provide a landmark instead.</small></div>
+          <label class="field full"><span>Photo evidence <small class="optional">· optional</small></span><input id="photo" type="file" accept="image/png,image/jpeg,image/webp"><small id="photoHint">PNG, JPG, or WebP · maximum 3 MB. Do not upload faces, IDs, or private documents.</small><img id="photoPreview" class="photo-preview hidden" alt="Selected report photo preview"></label>
         </div>
-        <div class="topbar-right">
-          <label class="global-search"><span>⌕</span><input id="globalSearch" type="search" placeholder="Search reports…" autocomplete="off"><kbd>↵</kbd></label>
-          <div class="demo-pill"><span></span> DEMO MODE</div>
-          <div class="top-avatar" title="Jerosh">J</div>
-        </div>
-      </header>
-      <div id="pageContent" class="page-content" aria-live="polite">
-        <div class="loading-state"><div class="loader"></div><p>Preparing community workspace…</p></div>
-      </div>
-      <footer class="app-footer"><span>© <span id="yearNow"></span> Pilar 360</span><span>Built by <strong>Jerosh</strong> · Independent demo, not an official LGU service</span><a href="https://www.pilarsor.gov.ph/" target="_blank" rel="noopener noreferrer">Pilar municipal website ↗</a></footer>
-    </main>
-  </div>
-  <div id="modalHost"></div>
+        <label class="consent"><input type="checkbox" id="confirmDemo" required><span>I understand that this is a student demonstration, not an official barangay or municipal reporting service. <b>*</b></span></label>
+        <div class="form-actions"><p>Do not use this website for emergencies. Contact the appropriate authorities directly.</p><button class="button button-primary" type="submit" id="submitButton">Submit demo report <span>→</span></button></div>
+      </form>
+      <div id="submitResult" class="result-box hidden" aria-live="polite"></div>
+    </section>
+
+    <section class="portal-panel hidden" id="trackPanel">
+      <div class="section-heading"><div><div class="eyebrow">REPORT FOLLOW-UP</div><h2>Check report status</h2><p>Enter the report ID you received after submitting your concern.</p></div><span class="step-number">02 / 02</span></div>
+      <form id="trackForm" class="track-form"><label class="field"><span>Report ID</span><input id="trackId" required placeholder="PIL-2026-0001" autocapitalize="characters"></label><button class="button button-primary" type="submit" id="trackButton">Find report <span>→</span></button></form>
+      <div id="trackResult" class="track-result" aria-live="polite"><div class="empty-track"><span>⌕</span><strong>No report searched yet</strong><p>Your report status and public update timeline will appear here.</p></div></div>
+    </section>
+
+    <section class="how-it-works">
+      <div><span>1</span><strong>Submit</strong><p>Share the issue, barangay location, and optional map coordinates.</p></div>
+      <div><span>2</span><strong>Save your ID</strong><p>Keep the report ID shown after a successful submission.</p></div>
+      <div><span>3</span><strong>Track</strong><p>Use the ID to check the latest status saved in this demo.</p></div>
+    </section>
+    <div class="prototype-notice"><strong>Important demonstration notice</strong><p>Pilar360 is an independent Grade 12 project prototype. It is not operated by the Municipality of Pilar or Barangay Marifosque. Reports are stored by the demo server only; no barangay official is automatically notified and no repair or official response is guaranteed. Use fictional/sample information during public demonstrations unless proper school and community permission has been obtained.</p></div>
+  </main>
+  <footer class="site-footer"><span>© <span id="year"></span> Pilar360 · Student project prototype</span><a href="/admin">Authority workspace</a></footer>
   <div id="toastHost" class="toast-host" role="status" aria-live="polite"></div>
 </body>
 </html>

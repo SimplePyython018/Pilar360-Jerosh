@@ -1,70 +1,87 @@
-# Pilar 360 REST API (local demo)
+# Pilar360 API — version 2.0 demo
 
-Base URL: `http://127.0.0.1:4173`
+All routes are served by the same Node.js server. Public submission and ID-based status tracking are separate from authority-only records.
 
-All API responses use JSON except static files. This API is intentionally unauthenticated and must remain local during a prototype demonstration.
+## Public routes
 
-## Health
+### Health
 
 ```http
 GET /api/health
 ```
 
-## List reports
-
-```http
-GET /api/reports
-GET /api/reports?status=In%20Progress
-GET /api/reports?category=Streetlight&q=Banuyo
-```
-
-## Create a report
+### Submit a report
 
 ```http
 POST /api/reports
 Content-Type: application/json
 
 {
-  "title": "Broken streetlight near waiting shed",
-  "category": "Streetlight",
-  "description": "The light does not appear to turn on after dark.",
-  "barangay": "Banuyo",
+  "reporter": "Sample Resident",
+  "title": "Blocked drainage near the waiting shed",
+  "category": "Drainage & Flooding",
+  "description": "Water collects beside the road after heavy rainfall.",
+  "barangay": "Marifosque",
   "address": "Near the waiting shed",
   "priority": "Normal",
   "lat": 12.9251,
   "lng": 123.674,
-  "reporter": "Community Member",
   "photoData": null
 }
 ```
 
-`title` must be at least 5 characters, `description` at least 15 characters, and category must match a known category. Coordinates and photos are optional. Photos must be PNG, JPEG, or WebP data URLs under the request limits.
+On success, the API returns a local demo report ID and initial status. Both `lat` and `lng` must be provided together, or both left blank.
 
-## Get and update a report
+### Track a report
 
 ```http
-GET /api/reports/PIL-2026-0012
-PATCH /api/reports/PIL-2026-0012
+GET /api/track/PIL-2026-0001
+```
+
+Returns a limited public view: report ID, issue title/category, barangay/landmark, status, dates, and status timeline. It does not return the reporter's name, exact coordinates, photo, or full description.
+
+## Authority routes
+
+The authority must sign in using `POST /api/admin/login`. The server sets an HTTP-only, SameSite=Strict session cookie. Sessions expire after two hours of inactivity. The login password must be configured in the server environment as `PILAR360_ADMIN_PASSWORD`.
+
+```http
+GET  /api/admin/session
+POST /api/admin/login
+POST /api/admin/logout
+```
+
+The following routes require a valid authority session:
+
+```http
+GET    /api/reports
+GET    /api/reports?status=In%20Progress
+GET    /api/reports?category=Streetlight&q=Marifosque
+GET    /api/reports/PIL-2026-0001
+PATCH  /api/reports/PIL-2026-0001
+GET    /api/stats
+GET    /api/export
+POST   /api/demo/reset
+```
+
+### Update a report status
+
+```http
+PATCH /api/reports/PIL-2026-0001
 Content-Type: application/json
 
 {
   "status": "In Progress",
-  "department": "Municipal Engineering",
-  "note": "Demo team recorded a status change."
+  "department": "Barangay Coordination",
+  "note": "Status updated in the student demonstration."
 }
 ```
 
 Valid statuses: `Submitted`, `Under Review`, `Assigned`, `In Progress`, `Resolved`, `Closed`.
 
-## Stats, export, reset
+## Notes
 
-```http
-GET /api/stats
-GET /api/export
-POST /api/demo/reset
-Content-Type: application/json
-
-{}
-```
-
-The reset endpoint deletes locally submitted demo records and restores the fictional sample dataset. Export any data you need before resetting.
+- Public submission is intentionally open for this classroom prototype.
+- Public tracking omits reporter identity and exact coordinates.
+- Authority-only API restrictions are enforced by the server, not only by hiding UI controls.
+- The session map is in memory and resets when the server restarts.
+- This is not an official barangay reporting or dispatch service.

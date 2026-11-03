@@ -1,8 +1,8 @@
 {
   "name": "pilar-360-jerosh",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Pilar 360 — a civic issue reporting prototype for Pilar, Sorsogon. Built by Jerosh.",
+  "description": "Pilar 360 — a community issue reporting and tracking prototype for Barangay Marifosque, Pilar, Sorsogon.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

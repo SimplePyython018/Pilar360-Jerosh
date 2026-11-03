@@ -64,6 +64,12 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.equal(authorizedList.status, 200);
   const reports = (await authorizedList.json()).reports;
   assert.ok(reports.some(r => r.id === created.id && r.reporter === 'Test Resident' && r.lat === 12.9251));
+  const authorizedDetail = await call(`/api/reports/${created.id}`, { headers: { cookie } });
+  assert.equal(authorizedDetail.status, 200, 'authority detail endpoint must return a saved report');
+  const detailedRecord = (await authorizedDetail.json()).report;
+  assert.equal(detailedRecord.reporter, 'Test Resident');
+  assert.equal(detailedRecord.address, 'Near test waiting shed');
+  assert.equal((await call(`/api/reports/${created.id}`)).status, 401, 'report details must remain authority-only');
 
   const unauthorizedUpdate = await call(`/api/reports/${created.id}`, json('PATCH', { status: 'Resolved' }));
   assert.equal(unauthorizedUpdate.status, 401);
@@ -95,7 +101,12 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.equal((await call('/admin')).status, 200);
   assert.match(await (await call('/admin')).text(), /Authority sign in/);
   const adminJs = await (await call('/admin-app.js')).text();
-  assert.match(adminJs, /Sign out of the authority workspace/);
-  assert.match(adminJs, /window.location.replace\('\/report'\)/);
+  assert.match(adminJs, /Yes, sign out/);
+  assert.match(adminJs, /function askLogout/);
+  assert.match(adminJs, /function photoEvidence/);
+  assert.match(adminJs, /if \(cached\)/);
+  assert.match(adminJs, /View report details/);
+  assert.match(adminJs, /window.location.replace\('\/report\?signedOut=1'\)/);
   assert.match(adminJs, /function initDetailMap/);
+  assert.match(await (await call('/reporter.js')).text(), /signedOut/);
 });

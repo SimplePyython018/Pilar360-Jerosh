@@ -1,4 +1,4 @@
-# Pilar360 API — version 2.1 demo
+# Pilar360 API — version 2.2 demo
 
 All routes are served by the same Node.js server. Public submission and ID-based status tracking are separate from authority-only records.
 

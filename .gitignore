@@ -6,3 +6,7 @@ node_modules/
 # Runtime submissions/photos are local-only; don't commit them.
 /data/reports.json
 !data/.gitkeep
+
+# Local safety copies
+server.js.backup
+*.backup

@@ -149,7 +149,7 @@ function createApp(options = {}) {
     catch { return sendJson(res, 400, { error: 'Invalid URL path.' }); }
     try {
       if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) && !hasValidOrigin(req)) return sendJson(res, 403, { error: 'Request origin was not accepted.' });
-      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.1.0-demo', mode: 'prototype', now: new Date().toISOString() });
+      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.2.0-demo', mode: 'prototype', now: new Date().toISOString() });
 
       if (req.method === 'GET' && pathname === '/api/admin/session') return sendJson(res, 200, { authenticated: isAuthorized(req), configured: Boolean(adminPassword) });
       if (req.method === 'POST' && pathname === '/api/admin/login') {

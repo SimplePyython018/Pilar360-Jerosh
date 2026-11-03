@@ -21,6 +21,10 @@
   }
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => switchTab(button.dataset.tab)));
   $('#year').textContent = new Date().getFullYear();
+  if (new URLSearchParams(location.search).get('signedOut') === '1') {
+    showToast('You are signed out. You are now back on the public report page.');
+    history.replaceState({}, '', '/report');
+  }
   function setLocation(lat, lng, message = 'Map pin selected. Check that it matches the issue location.') {
     const latitude = Number(lat), longitude = Number(lng);
     if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {

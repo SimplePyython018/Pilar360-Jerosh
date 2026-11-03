@@ -2,7 +2,7 @@
 
 /* Pilar 360 frontend — vanilla JavaScript, no build process, demo API only. */
 (() => {
-  const state = { page: 'dashboard', reports: [], stats: null, search: '', statusFilter: 'All', categoryFilter: 'All', mapInstances: [], detailMapInstance: null, currentDetail: null, authenticated: false };
+  const state = { page: 'dashboard', reports: [], stats: null, search: '', statusFilter: 'All', categoryFilter: 'All', mapInstances: [], detailMapInstance: null, currentDetail: null, authenticated: false, detailRequestToken: 0, openingReportId: null };
   const CATEGORY_META = {
     'Road & Sidewalk': { icon: '🛣️', tone: 'road', department: 'Municipal Engineering' },
     'Waste & Cleanliness': { icon: '♻️', tone: 'waste', department: 'Municipal Environment' },
@@ -54,7 +54,7 @@
     return state.stats || { total: state.reports.length, active: activeReports().length, resolved: state.reports.filter(r => ['Resolved', 'Closed'].includes(r.status)).length, urgent: state.reports.filter(r => r.priority === 'Urgent' && !['Resolved', 'Closed'].includes(r.status)).length, submittedToday: 0, resolutionRate: 0, categories: [], statuses: [] };
   }
   async function api(url, options = {}) {
-    const response = await fetch(url, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } });
+    const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } });
     const type = response.headers.get('content-type') || '';
     const payload = type.includes('application/json') ? await response.json() : await response.text();
     if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status}).`);
@@ -105,7 +105,7 @@
     return `<article class="stat-card"><div class="stat-top"><span>${label}</span><span class="stat-icon ${tone}">${icon}</span></div><div class="stat-value">${value}</div><div class="stat-bottom">${trend ? `<span class="stat-trend ${trend === 'DEMO' ? 'neutral' : ''}">${trend}</span>` : ''}<span>${detail}</span></div></article>`;
   }
   function reportRow(report, compact = true) {
-    return `<div class="report-row" data-open-report="${escapeHtml(report.id)}" tabindex="0" role="button" aria-label="Open report ${escapeHtml(report.title)}">${categoryIcon(report.category)}<div class="report-row-main"><div class="report-row-title">${escapeHtml(report.title)}</div><div class="report-row-meta">${escapeHtml(report.id)} · Brgy. ${escapeHtml(report.barangay || 'Not specified')} · ${relativeTime(report.createdAt)}</div></div>${statusPill(report.status)}</div>`;
+    return `<article class="report-row" data-open-report="${escapeHtml(report.id)}" tabindex="0" role="button" aria-label="Open report ${escapeHtml(report.title)}"><div class="report-row-main-wrap">${categoryIcon(report.category)}<div class="report-row-main"><div class="report-row-title">${escapeHtml(report.title)}</div><div class="report-row-meta">${escapeHtml(report.id)} · Brgy. ${escapeHtml(report.barangay || 'Not specified')} · ${relativeTime(report.createdAt)}</div></div>${statusPill(report.status)}</div><span class="report-row-open">View details <span aria-hidden="true">→</span></span></article>`;
   }
   function barsForCategories() {
     const counts = CATEGORIES.map(name => ({ name, count: state.reports.filter(r => r.category === name).length })).sort((a, b) => b.count - a.count);
@@ -130,20 +130,24 @@
     const q = state.search.trim().toLowerCase();
     return [...state.reports].filter(r => (state.statusFilter === 'All' || (state.statusFilter === 'Open' ? !['Resolved', 'Closed'].includes(r.status) : r.status === state.statusFilter)) && (state.categoryFilter === 'All' || r.category === state.categoryFilter) && (!q || [r.id, r.title, r.description, r.category, r.barangay, r.address, r.department, r.reporter].some(value => String(value || '').toLowerCase().includes(q)))).sort(byNewest);
   }
-  function reportTableRow(report) {
-    return `<tr data-open-report="${escapeHtml(report.id)}" tabindex="0"><td><div class="report-name">${categoryIcon(report.category)}<div><strong>${escapeHtml(report.title)}</strong><small>${escapeHtml(report.category)} · Brgy. ${escapeHtml(report.barangay || 'Not specified')}</small></div></div></td><td>${escapeHtml(report.reporter || 'Not provided')}</td><td>${escapeHtml([report.barangay, report.address].filter(Boolean).join(' · ') || 'Not provided')}</td><td><span class="id-text">${escapeHtml(report.id)}</span></td><td>${statusPill(report.status)}</td><td><span class="priority ${escapeHtml(report.priority)}">${escapeHtml(report.priority)}</span></td><td>${escapeHtml(report.department || 'Unassigned')}</td><td>${relativeTime(report.createdAt)}</td></tr>`;
+  function reportCard(report) {
+    const location = [report.barangay ? `Brgy. ${report.barangay}` : '', report.address || 'Landmark not provided'].filter(Boolean).join(' · ');
+    return `<article class="inbox-card" data-open-report="${escapeHtml(report.id)}" tabindex="0" role="button" aria-label="Open report ${escapeHtml(report.title)}">
+      <div class="inbox-card-top">${categoryIcon(report.category)}<div class="inbox-card-heading"><strong>${escapeHtml(report.title)}</strong><small>${escapeHtml(report.id)} · ${relativeTime(report.createdAt)}</small></div>${statusPill(report.status)}</div>
+      <div class="inbox-card-info"><span><b>Reporter</b>${escapeHtml(report.reporter || 'Not provided')}</span><span><b>Location</b>${escapeHtml(location || 'Not provided')}</span><span><b>Assigned unit</b>${escapeHtml(report.department || 'Unassigned')}</span></div>
+      <div class="inbox-card-bottom"><span class="priority ${escapeHtml(report.priority || 'Normal')}">${escapeHtml(report.priority || 'Normal')} priority</span><span class="btn btn-primary btn-sm">View report details <span aria-hidden="true">→</span></span></div>
+    </article>`;
   }
   function renderReports() {
     const rows = filteredReports();
-    const heading = pageHeading('AUTHORITY INBOX', 'Issue reports', 'Review who submitted each concern, check its reported location, and update its demo status.', '<a class="btn btn-ghost" href="/report">Public report portal ↗</a>');
-    $('#pageContent').innerHTML = `${heading}<div class="page-tools"><label class="input-wrap"><span>⌕</span><input id="reportSearch" type="search" value="${escapeHtml(state.search)}" placeholder="Search issue, reporter, ID, location…"></label><select class="filter-select" id="statusFilter" aria-label="Filter by status"><option value="All">All reports</option><option value="Open" ${state.statusFilter === 'Open' ? 'selected' : ''}>Open reports</option>${STATUSES.map(s => `<option value="${s}" ${state.statusFilter === s ? 'selected' : ''}>${s}</option>`).join('')}</select><select class="filter-select" id="categoryFilter" aria-label="Filter by category"><option>All</option>${CATEGORIES.map(c => `<option ${state.categoryFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select><button class="btn btn-ghost" data-action="clear-filters">Reset filters</button></div><article class="panel"><div class="table-wrap"><table class="report-table"><thead><tr><th>Issue</th><th>Reported by</th><th>Location</th><th>Report ID</th><th>Status</th><th>Priority</th><th>Assigned unit</th><th>Submitted</th></tr></thead><tbody id="reportTableBody">${rows.map(reportTableRow).join('') || `<tr><td colspan="8"><div class="empty-state"><strong>No matching reports</strong>Try another search or submit a new concern.</div></td></tr>`}</tbody></table></div><div class="table-count"><span id="reportCountText">Showing ${rows.length} of ${state.reports.length} reports</span><span>All entries are prototype data</span></div></article>`;
-  }
-  function renderMapPage() {
-    const mapped = state.reports.filter(hasCoordinates);
-    const urgent = activeReports().filter(r => r.priority === 'Urgent').length;
-    const heading = pageHeading('LOCATION OVERVIEW', 'Community map', 'View the reported locations for Barangay Marifosque. Select a pin to open its report details. Coordinates are user-provided and not independently verified.');
-    $('#pageContent').innerHTML = `${heading}<div class="map-stat-strip"><div class="map-stat"><small>Mapped reports</small><strong>${mapped.length}</strong></div><div class="map-stat"><small>Open concerns</small><strong>${activeReports().length}</strong></div><div class="map-stat"><small>Urgent open</small><strong>${urgent}</strong></div></div><section class="map-layout"><article class="panel"><div class="panel-header"><div><h3 class="panel-title">Barangay Marifosque · report locations</h3><p class="panel-subtitle">OpenStreetMap tiles · approximate sample pins</p></div><span class="demo-pill"><span></span> DEMO PINS</span></div><div class="full-map"><div id="mapFull" style="height:100%;width:100%"></div><div class="map-no-network hidden" id="mapFallbackFull"><span>⌖</span><strong>Map tiles unavailable</strong><small>Map tiles require internet. The report list and coordinates remain available below.</small></div></div><div class="panel-footer"><div class="legend"><span><i style="background:#f4a178"></i>High / urgent</span><span><i style="background:#85b5f4"></i>Open</span><span><i style="background:#89bb50"></i>Resolved</span></div><span>Tap a pin for details</span></div></article><article class="panel"><div class="panel-header"><div><h3 class="panel-title">Mapped issue list</h3><p class="panel-subtitle">${mapped.length} of ${state.reports.length} reports include coordinates</p></div></div><div class="map-side-list">${mapped.sort(byNewest).map(r => reportRow(r)).join('') || `<div class="empty-state"><strong>No mapped reports</strong>A resident must add coordinates in the public portal for a report pin to appear here.</div>`}</div></article></section>`;
-    initMap('mapFull', 'mapFallbackFull', { mini: false });
+    const heading = pageHeading('AUTHORITY INBOX', 'Issue reports', 'Choose a report to see its details, photo, map location, and status controls.', '<a class="btn btn-ghost" href="/report">Public report portal ↗</a>');
+    $('#pageContent').innerHTML = `${heading}
+      <div class="page-tools"><label class="input-wrap"><span>⌕</span><input id="reportSearch" type="search" value="${escapeHtml(state.search)}" placeholder="Search title, reporter, ID, location…"></label>
+      <select class="filter-select" id="statusFilter" aria-label="Filter by status"><option value="All">All reports</option><option value="Open" ${state.statusFilter === 'Open' ? 'selected' : ''}>Open reports</option>${STATUSES.map(status => `<option value="${status}" ${state.statusFilter === status ? 'selected' : ''}>${status}</option>`).join('')}</select>
+      <select class="filter-select" id="categoryFilter" aria-label="Filter by category"><option>All</option>${CATEGORIES.map(category => `<option ${state.categoryFilter === category ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select><button class="btn btn-ghost" data-action="clear-filters">Reset filters</button></div>
+      <div class="inbox-summary"><strong>${rows.length} report${rows.length === 1 ? '' : 's'}</strong><span>Tap “View report details” to open a submission.</span></div>
+      <section class="inbox-grid" id="reportCardList">${rows.map(reportCard).join('') || `<div class="empty-state inbox-empty"><strong>No matching reports</strong>Try another search or submit a new concern.</div>`}</section>
+      <div class="table-count" id="reportCountText">Showing ${rows.length} of ${state.reports.length} reports · Prototype records only</div>`;
   }
   function renderInsights() {
     const stats = currentStats();
@@ -155,7 +159,7 @@
     $('#pageContent').innerHTML = `${pageHeading('DATA SNAPSHOT', 'Community insights', 'A lightweight operational view of what residents are reporting. Counts are calculated from this prototype’s local dataset.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export JSON</button>')}<section class="stats-grid">${statCard('Total reports', totals, 'All categories and statuses', '▤', '', 'DEMO')}${statCard('High / urgent open', highPriority, 'Prioritize assessment', '⚑', 'orange', highPriority ? 'REVIEW' : 'NONE')}${statCard('Location missing', noLocation, 'Reports without map coordinates', '⌖', 'blue', noLocation ? 'CHECK' : 'READY')}${statCard('Resolved share', `${stats.resolutionRate}%`, 'Resolved or closed', '✓', 'purple', `${stats.resolutionRate}%`)}</section><section class="insights-grid"><article class="insight-card"><h3>Workflow distribution</h3><p>How reports are moving through the demo process.</p><div class="status-bars">${statuses.map(item => `<div class="status-bar-row"><span>${escapeHtml(item.status)}</span><div class="status-bar-track"><div class="status-bar-fill" style="width:${Math.round(item.count / max * 100)}%;background:${item.status === 'Resolved' || item.status === 'Closed' ? '#8dbd55' : item.status === 'Urgent' ? '#ef8d70' : '#92b5ed'}"></div></div><strong>${item.count}</strong></div>`).join('')}</div><div class="insight-summary"><div class="summary-circle">${totals ? Math.round(stats.resolutionRate) : 0}%</div><div><strong>Resolution / closure share</strong><br>This is a status ratio only. It is not a service-level guarantee or an official municipal performance measure.</div></div></article><article class="insight-card"><h3>Reports by category</h3><p>Use this to spot recurring topics in the sample data.</p><div class="status-bars">${CATEGORIES.map((category, index) => ({ category, count: state.reports.filter(r => r.category === category).length })).sort((a,b) => b.count - a.count).map((item,index) => `<div class="status-bar-row"><span>${escapeHtml(item.category)}</span><div class="status-bar-track"><div class="status-bar-fill" style="width:${Math.round(item.count / Math.max(1, totals) * 100)}%;background:${['#8dbd55','#92b5ed','#efad79','#a99bf5','#8fc5be'][index % 5]}"></div></div><strong>${item.count}</strong></div>`).join('')}</div><div class="insight-summary"><div class="summary-circle">${CATEGORIES.filter(category => state.reports.some(r => r.category === category)).length}</div><div><strong>Categories represented</strong><br>Categories with at least one report in the current local dataset.</div></div></article></section><div class="warning-note">Prototype analytics only: the sample records are fictional, and these numbers do not represent actual complaints or response performance in Pilar, Sorsogon.</div>`;
   }
   function renderSettings() {
-    $('#pageContent').innerHTML = `${pageHeading('PROJECT INFORMATION', 'Workspace & settings', 'Manage this local prototype, review the technical boundaries, and restore the original sample records.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export data</button>')}<section class="settings-grid"><article class="setting-card"><h3>Project identity</h3><p>Pilar 360 is an independent civic reporting prototype designed and built by Jerosh. It is not an official application of the Municipality of Pilar.</p><div class="setting-line"><span>Project</span><strong>Pilar 360</strong></div><div class="setting-line"><span>Builder</span><strong>Jerosh</strong></div><div class="setting-line"><span>Version</span><strong>2.1.0-demo</strong></div><div class="setting-line"><span>Runtime</span><strong>Node.js · native modules</strong></div><div class="setting-line"><span>Storage</span><strong>Local JSON database</strong></div></article><article class="setting-card"><h3>Demo data controls</h3><p>Submitted reports are written to <code>data/reports.json</code>. Resetting replaces the dataset with fictional sample reports; export before resetting if you need to keep your local demo entries.</p><div class="setting-line"><span>Current report count</span><strong>${state.reports.length}</strong></div><div class="setting-line"><span>Demo photos</span><strong>Stored as data URLs</strong></div><div class="setting-line"><span>Real LGU integration</span><strong>Not connected</strong></div><button class="btn btn-dark" data-action="reset-demo">↻ Restore sample dataset</button><div class="warning-note">Reset is permanent for the local demo file. Export your data first if you want to preserve it.</div></article><article class="setting-card"><h3>Privacy & deployment notes</h3><p>Use only for an approved classroom demonstration. Hosted access and HTTPS depend on the configured hosting provider.</p><div class="setting-line"><span>Authentication</span><strong>Protected demo sign-in</strong></div><div class="setting-line"><span>HTTPS / TLS</span><strong>Hosting dependent</strong></div><div class="setting-line"><span>Official case numbers</span><strong>Not issued</strong></div><div class="setting-line"><span>Emergency dispatch</span><strong>Not supported</strong></div></article><article class="setting-card"><h3>Production readiness checklist</h3><p>Before any real community use, the prototype needs a trusted LGU partner and a secured production architecture.</p>${['Municipality approval and official ownership','Authenticated citizen and staff accounts','Role-based permissions and audit logs','Secure file storage and backup policy','Privacy notice and data-retention rules','Verified map/geocoding and department routing','Monitoring, rate limiting and abuse prevention'].map(item => `<div class="setting-line"><span>${escapeHtml(item)}</span><strong style="color:#c87551">Not yet</strong></div>`).join('')}</article></section>`;
+    $('#pageContent').innerHTML = `${pageHeading('PROJECT INFORMATION', 'Workspace & settings', 'Manage this local prototype, review the technical boundaries, and restore the original sample records.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export data</button>')}<section class="settings-grid"><article class="setting-card"><h3>Project identity</h3><p>Pilar 360 is an independent civic reporting prototype designed and built by Jerosh. It is not an official application of the Municipality of Pilar.</p><div class="setting-line"><span>Project</span><strong>Pilar 360</strong></div><div class="setting-line"><span>Builder</span><strong>Jerosh</strong></div><div class="setting-line"><span>Version</span><strong>2.2.0-demo</strong></div><div class="setting-line"><span>Runtime</span><strong>Node.js · native modules</strong></div><div class="setting-line"><span>Storage</span><strong>Local JSON database</strong></div></article><article class="setting-card"><h3>Demo data controls</h3><p>Submitted reports are written to <code>data/reports.json</code>. Resetting replaces the dataset with fictional sample reports; export before resetting if you need to keep your local demo entries.</p><div class="setting-line"><span>Current report count</span><strong>${state.reports.length}</strong></div><div class="setting-line"><span>Demo photos</span><strong>Stored as data URLs</strong></div><div class="setting-line"><span>Real LGU integration</span><strong>Not connected</strong></div><button class="btn btn-dark" data-action="reset-demo">↻ Restore sample dataset</button><div class="warning-note">Reset is permanent for the local demo file. Export your data first if you want to preserve it.</div></article><article class="setting-card"><h3>Privacy & deployment notes</h3><p>Use only for an approved classroom demonstration. Hosted access and HTTPS depend on the configured hosting provider.</p><div class="setting-line"><span>Authentication</span><strong>Protected demo sign-in</strong></div><div class="setting-line"><span>HTTPS / TLS</span><strong>Hosting dependent</strong></div><div class="setting-line"><span>Official case numbers</span><strong>Not issued</strong></div><div class="setting-line"><span>Emergency dispatch</span><strong>Not supported</strong></div></article><article class="setting-card"><h3>Production readiness checklist</h3><p>Before any real community use, the prototype needs a trusted LGU partner and a secured production architecture.</p>${['Municipality approval and official ownership','Authenticated citizen and staff accounts','Role-based permissions and audit logs','Secure file storage and backup policy','Privacy notice and data-retention rules','Verified map/geocoding and department routing','Monitoring, rate limiting and abuse prevention'].map(item => `<div class="setting-line"><span>${escapeHtml(item)}</span><strong style="color:#c87551">Not yet</strong></div>`).join('')}</article></section>`;
   }
   function destroyMaps() {
     for (const map of state.mapInstances) { try { map.remove(); } catch {} }
@@ -253,20 +257,54 @@
       $('#detailMapFallback')?.classList.remove('hidden');
     }
   }
-  async function openReportDetail(id) {
-    let report = state.reports.find(item => item.id === id);
-    try { const data = await api(`/api/reports/${encodeURIComponent(id)}`); report = data.report; }
-    catch (error) { showToast('Could not open report.', error.message, 'error'); return; }
-    if (!report) return;
+  function photoEvidence(report) {
+    if (report.photoData) return `<figure class="evidence-photo"><img src="${report.photoData}" alt="Photo evidence submitted with ${escapeHtml(report.id)}" loading="lazy"><figcaption>Photo submitted by the reporter</figcaption></figure>`;
+    const meta = CATEGORY_META[report.category] || CATEGORY_META.Other;
+    return `<div class="evidence-placeholder" role="img" aria-label="No photo was attached to this report"><span>${meta.icon}</span><div><strong>No photo attached</strong><small>The reporter did not upload photo evidence for this submission.</small></div></div>`;
+  }
+  function showDetailLoading(id) {
+    $('#modalHost').innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal detail-loading" role="dialog" aria-modal="true" aria-label="Opening report"><div class="loader"></div><strong>Opening report ${escapeHtml(id)}…</strong><p>Loading report details.</p><button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button></section></div>`;
+  }
+  function renderReportDetail(report) {
     state.currentDetail = report;
     const host = $('#modalHost');
     const timeline = [...(report.timeline || [])].sort((a,b) => new Date(a.at) - new Date(b.at));
-    const imageHtml = report.photoData ? `<div style="margin:0 0 15px"><img src="${report.photoData}" alt="Photo submitted with ${escapeHtml(report.id)}" style="display:block;max-width:100%;max-height:250px;object-fit:contain;border-radius:9px;border:1px solid #e8edee"></div>` : '';
+    const imageHtml = photoEvidence(report);
     const mapSection = hasCoordinates(report)
-      ? `<section class="detail-map-card"><div class="detail-map-heading"><div><strong>Reported map location</strong><small>Pin based on the coordinates entered by the reporter.</small></div><a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(report.lat)}&mlon=${encodeURIComponent(report.lng)}#map=17/${encodeURIComponent(report.lat)}/${encodeURIComponent(report.lng)}" target="_blank" rel="noopener noreferrer">Open larger map ↗</a></div><div class="detail-map-wrap"><div id="reportDetailMap" class="detail-map"></div><div id="detailMapFallback" class="detail-map-fallback hidden">The map tiles could not load. Use the coordinates below or open the map link.</div></div><div class="detail-map-coordinates">${escapeHtml(report.lat)}, ${escapeHtml(report.lng)} · ${escapeHtml(report.address || report.barangay || 'No landmark provided')}</div></section>`
-      : `<section class="detail-map-card"><div class="detail-map-heading"><div><strong>Reported map location</strong><small>No map coordinates were provided.</small></div></div><div class="detail-map-empty">${escapeHtml(report.address || 'No nearby street or landmark was provided.')}<br><span>A map pin will appear here when the reporter selects a location or shares device coordinates.</span></div></section>`;
-    host.innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-head"><div><div class="eyebrow">REPORT DETAIL · ${escapeHtml(report.id)}</div><h2 id="detailTitle">Report overview</h2><p>Review the submission, reported location, and status history.</p></div><button class="close-modal" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="detail-hero">${categoryIcon(report.category)}<div><h3>${escapeHtml(report.title)}</h3><small>Submitted ${formatDate(report.createdAt, { hour: 'numeric', minute: '2-digit' })} · ${escapeHtml(report.reporter || 'Community member')}</small></div></div><div class="detail-tags">${statusPill(report.status)}<span class="priority ${escapeHtml(report.priority)}">${escapeHtml(report.priority)} priority</span></div><p class="detail-description">${escapeHtml(report.description)}</p>${imageHtml}<div class="detail-grid"><div class="detail-field"><small>Submitted by</small><strong>${escapeHtml(report.reporter || 'Not provided')}</strong></div><div class="detail-field"><small>Category</small><strong>${escapeHtml(report.category)}</strong></div><div class="detail-field"><small>Barangay</small><strong>${escapeHtml(report.barangay || 'Not specified')}</strong></div><div class="detail-field"><small>Location / landmark</small><strong>${escapeHtml(report.address || 'No landmark provided')}</strong></div><div class="detail-field"><small>Assigned unit</small><strong>${escapeHtml(report.department || 'Unassigned')}</strong></div><div class="detail-field"><small>Coordinates</small><strong>${hasCoordinates(report) ? `${escapeHtml(report.lat)}, ${escapeHtml(report.lng)}` : 'Not provided'}</strong></div><div class="detail-field"><small>Last updated</small><strong>${formatDate(report.updatedAt, { hour: 'numeric', minute: '2-digit' })}</strong></div></div>${mapSection}<div class="timeline"><h4>Activity timeline</h4>${timeline.length ? timeline.map(item => `<div class="timeline-item"><div class="timeline-dot"></div><div><strong>${escapeHtml(item.status)}</strong><p>${escapeHtml(item.note || 'Status update recorded.')}</p><time>${formatDate(item.at, { hour: 'numeric', minute: '2-digit' })}</time></div></div>`).join('') : `<div class="empty-state">No activity recorded.</div>`}</div><div class="admin-editor"><h4>AUTHORITY STATUS CONTROLS <span style="font-size:8px;color:#668f39;font-weight:700">· signed-in demo session</span></h4><form id="updateReportForm" data-report-id="${escapeHtml(report.id)}"><div class="form-grid"><div class="form-field"><label for="updateStatus">Status</label><select id="updateStatus" name="status">${STATUSES.map(s => `<option ${report.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div><div class="form-field"><label for="updateDepartment">Assigned unit</label><select id="updateDepartment" name="department">${DEPARTMENTS.map(d => `<option ${report.department === d ? 'selected' : ''}>${d}</option>`).join('')}</select></div><div class="form-field full"><label for="updateNote">Public update note</label><textarea id="updateNote" name="note" maxlength="500" placeholder="Add a short status note (optional)."></textarea></div></div><div class="form-bottom"><small>Changes are stored in this prototype’s demo data and added to the report timeline.</small><button class="btn btn-dark" type="submit" id="saveUpdateButton">Save status update</button></div></form></div></div></section></div>`;
-    if (window.L) initDetailMap(report);
+      ? `<section class="detail-map-card"><div class="detail-map-heading"><div><strong>Reported map location</strong><small>Pin based on the coordinates entered by the reporter.</small></div><a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(report.lat)}&mlon=${encodeURIComponent(report.lng)}#map=17/${encodeURIComponent(report.lat)}/${encodeURIComponent(report.lng)}" target="_blank" rel="noopener noreferrer">Open larger map ↗</a></div><div class="detail-map-wrap"><div id="reportDetailMap" class="detail-map"></div><div id="detailMapFallback" class="detail-map-fallback hidden">Map tiles could not load. The location coordinates are still available below. Open the larger map link to view the pin.</div></div><div class="detail-map-coordinates">${escapeHtml(report.lat)}, ${escapeHtml(report.lng)} · ${escapeHtml(report.address || report.barangay || 'No landmark provided')}</div></section>`
+      : `<section class="detail-map-card"><div class="detail-map-heading"><div><strong>Reported map location</strong><small>No map pin was attached to this report.</small></div></div><div class="detail-map-empty"><span class="empty-map-icon">⌖</span><strong>${escapeHtml(report.address || 'No nearby street or landmark was provided.')}</strong><span>There are no coordinates to place on the map. The reporter can still be identified by the landmark they entered.</span></div></section>`;
+    host.innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-head"><div><div class="eyebrow">REPORT DETAIL · ${escapeHtml(report.id)}</div><h2 id="detailTitle">Report overview</h2><p>Review the submission, reported location, and status history.</p></div><button class="close-modal" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="detail-hero">${categoryIcon(report.category)}<div><h3>${escapeHtml(report.title)}</h3><small>Submitted ${formatDate(report.createdAt, { hour: 'numeric', minute: '2-digit' })} · ${escapeHtml(report.reporter || 'Community member')}</small></div></div><div class="detail-tags">${statusPill(report.status)}<span class="priority ${escapeHtml(report.priority || 'Normal')}">${escapeHtml(report.priority || 'Normal')} priority</span></div><p class="detail-description">${escapeHtml(report.description)}</p>${imageHtml}<div class="detail-grid"><div class="detail-field"><small>Submitted by</small><strong>${escapeHtml(report.reporter || 'Not provided')}</strong></div><div class="detail-field"><small>Category</small><strong>${escapeHtml(report.category)}</strong></div><div class="detail-field"><small>Barangay</small><strong>${escapeHtml(report.barangay || 'Not specified')}</strong></div><div class="detail-field"><small>Location / landmark</small><strong>${escapeHtml(report.address || 'No landmark provided')}</strong></div><div class="detail-field"><small>Assigned unit</small><strong>${escapeHtml(report.department || 'Unassigned')}</strong></div><div class="detail-field"><small>Coordinates</small><strong>${hasCoordinates(report) ? `${escapeHtml(report.lat)}, ${escapeHtml(report.lng)}` : 'Not provided'}</strong></div><div class="detail-field"><small>Last updated</small><strong>${formatDate(report.updatedAt, { hour: 'numeric', minute: '2-digit' })}</strong></div></div>${mapSection}<div class="timeline"><h4>Activity timeline</h4>${timeline.length ? timeline.map(item => `<div class="timeline-item"><div class="timeline-dot"></div><div><strong>${escapeHtml(item.status)}</strong><p>${escapeHtml(item.note || 'Status update recorded.')}</p><time>${formatDate(item.at, { hour: 'numeric', minute: '2-digit' })}</time></div></div>`).join('') : `<div class="empty-state">No activity recorded.</div>`}</div><div class="admin-editor"><h4>AUTHORITY STATUS CONTROLS <span style="font-size:8px;color:#668f39;font-weight:700">· signed-in demo session</span></h4><form id="updateReportForm" data-report-id="${escapeHtml(report.id)}"><div class="form-grid"><div class="form-field"><label for="updateStatus">Status</label><select id="updateStatus" name="status">${STATUSES.map(status => `<option ${report.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div><div class="form-field"><label for="updateDepartment">Assigned unit</label><select id="updateDepartment" name="department">${DEPARTMENTS.map(department => `<option ${report.department === department ? 'selected' : ''}>${department}</option>`).join('')}</select></div><div class="form-field full"><label for="updateNote">Public update note</label><textarea id="updateNote" name="note" maxlength="500" placeholder="Add a short status note (optional)."></textarea></div></div><div class="form-bottom"><small>Changes are stored in this prototype’s demo data and added to the report timeline.</small><button class="btn btn-dark" type="submit" id="saveUpdateButton">Save status update</button></div></form></div></div></section></div>`;
+    if (window.L && hasCoordinates(report)) initDetailMap(report);
+    else if (!hasCoordinates(report)) $('#detailMapFallback')?.classList.add('hidden');
+  }
+  async function openReportDetail(id) {
+    if (!id || !state.authenticated) return;
+    const cached = state.reports.find(item => item.id === id);
+    if (cached) {
+      state.detailRequestToken += 1;
+      state.openingReportId = null;
+      closeDetailMapOnly();
+      renderReportDetail(cached);
+      return;
+    }
+    if (state.openingReportId === id) return;
+    const token = ++state.detailRequestToken;
+    state.openingReportId = id;
+    showDetailLoading(id);
+    try {
+      const data = await api(`/api/reports/${encodeURIComponent(id)}`);
+      if (token !== state.detailRequestToken || !state.authenticated) return;
+      if (!data.report) throw new Error('The report record was not returned by the server.');
+      renderReportDetail(data.report);
+    } catch (error) {
+      if (token !== state.detailRequestToken) return;
+      $('#modalHost').innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal detail-error" role="alertdialog" aria-modal="true"><h2>Could not open report</h2><p>${escapeHtml(error.message)}</p><div class="detail-error-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Close</button><button type="button" class="btn btn-primary" data-retry-report="${escapeHtml(id)}">Try again</button></div></section></div>`;
+    } finally {
+      if (token === state.detailRequestToken) state.openingReportId = null;
+    }
+  }
+  function closeDetailMapOnly() {
+    if (state.detailMapInstance) { try { state.detailMapInstance.remove(); } catch {} state.detailMapInstance = null; }
   }
   async function updateReport(event) {
     event.preventDefault();
@@ -286,9 +324,11 @@
     }
   }
   function closeModal() {
+    state.detailRequestToken += 1;
+    state.openingReportId = null;
     $('#modalHost').innerHTML = '';
     state.currentDetail = null;
-    if (state.detailMapInstance) { try { state.detailMapInstance.remove(); } catch {} state.detailMapInstance = null; }
+    closeDetailMapOnly();
   }
   async function resetDemo() {
     const confirmed = window.confirm('Restore the original fictional sample reports? Any reports saved in this local demo will be removed. Export first if you need to keep them.');
@@ -306,10 +346,12 @@
   }
   function applyReportFilters() {
     const rows = filteredReports();
-    const body = $('#reportTableBody');
-    if (body) body.innerHTML = rows.map(reportTableRow).join('') || `<tr><td colspan="8"><div class="empty-state"><strong>No matching reports</strong>Try another search or submit a new concern.</div></td></tr>`;
+    const list = $('#reportCardList');
+    if (list) list.innerHTML = rows.map(reportCard).join('') || `<div class="empty-state inbox-empty"><strong>No matching reports</strong>Try another search or submit a new concern.</div>`;
     const count = $('#reportCountText');
-    if (count) count.textContent = `Showing ${rows.length} of ${state.reports.length} reports`;
+    if (count) count.textContent = `Showing ${rows.length} of ${state.reports.length} reports · Prototype records only`;
+    const summary = $('.inbox-summary strong');
+    if (summary) summary.textContent = `${rows.length} report${rows.length === 1 ? '' : 's'}`;
   }
 
   function showAdminLock(message = '') {
@@ -347,33 +389,47 @@
     } catch (error) { showAdminLock(error.message); }
     finally { button.disabled = false; button.textContent = 'Unlock authority workspace →'; }
   }
+  function askLogout() {
+    $('#modalHost').innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal logout-confirm" role="alertdialog" aria-modal="true" aria-labelledby="logoutTitle"><div class="logout-symbol">↪</div><h2 id="logoutTitle">Sign out of authority?</h2><p>Your authority session will end. You will return to the public report page. Reports already saved in the demo will remain in the current server data file.</p><div class="detail-error-actions"><button type="button" class="btn btn-ghost" data-action="cancel-logout">No, stay here</button><button type="button" class="btn btn-dark" data-action="confirm-logout">Yes, sign out</button></div></section></div>`;
+    $('[data-action="cancel-logout"]')?.focus();
+  }
   async function logoutAdmin() {
-    const confirmed = window.confirm('Sign out of the authority workspace? Your current session will end.\n\nOK = Yes, sign out\nCancel = No, stay here.');
-    if (!confirmed) return;
     try {
-      await api('/api/admin/logout', { method: 'POST', body: '{}' });
+      await api('/api/admin/logout', { method: 'POST', body: JSON.stringify({}) });
       state.authenticated = false; state.reports = []; state.stats = null; state.currentDetail = null; destroyMaps();
-      window.location.replace('/report');
+      window.location.replace('/report?signedOut=1');
     } catch (error) {
       showToast('Could not end the authority session.', error.message + ' Please try signing out again.', 'error');
+      closeModal();
     }
   }
 
   document.addEventListener('click', event => {
-    const pageButton = event.target.closest('[data-page]');
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!target) return;
+    const reportTrigger = target.closest('[data-open-report]');
+    if (reportTrigger) {
+      event.preventDefault();
+      const id = reportTrigger.dataset.openReport;
+      if (id) openReportDetail(id);
+      return;
+    }
+    const retryTrigger = target.closest('[data-retry-report]');
+    if (retryTrigger) { event.preventDefault(); openReportDetail(retryTrigger.dataset.retryReport); return; }
+    const pageButton = target.closest('[data-page]');
     if (pageButton) { event.preventDefault(); setPage(pageButton.dataset.page); return; }
-    const action = event.target.closest('[data-action]')?.dataset.action;
-    if (action === 'logout') { logoutAdmin(); return; }
+    const action = target.closest('[data-action]')?.dataset.action;
+    if (action === 'logout') { askLogout(); return; }
+    if (action === 'confirm-logout') { logoutAdmin(); return; }
+    if (action === 'cancel-logout') { closeModal(); return; }
     if (action === 'close-modal') { closeModal(); return; }
     if (action === 'clear-filters') { state.search = ''; state.statusFilter = 'All'; state.categoryFilter = 'All'; renderReports(); return; }
     if (action === 'export') { exportData(); return; }
     if (action === 'reset-demo') { resetDemo(); return; }
-    const reportRowElement = event.target.closest('[data-open-report]');
-    if (reportRowElement) { openReportDetail(reportRowElement.dataset.openReport); return; }
-    if (event.target.classList.contains('modal-backdrop')) closeModal();
-  });
+    if (target.classList.contains('modal-backdrop')) closeModal();
+  }, true);
   document.addEventListener('keydown', event => {
-    if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-open-report]')) { event.preventDefault(); openReportDetail(event.target.dataset.openReport); }
+    if ((event.key === 'Enter' || event.key === ' ') && event.target instanceof Element && event.target.matches('[data-open-report]')) { event.preventDefault(); openReportDetail(event.target.dataset.openReport); }
     if (event.key === 'Escape') { closeModal(); $('#sidebar').classList.remove('open'); $('#mobileScrim').classList.remove('show'); }
   });
   document.addEventListener('submit', event => {

@@ -4,18 +4,18 @@
 
 > **Important:** Pilar360 is a school project demonstration, not an official Barangay Marifosque or Municipality of Pilar service. Reports are saved by this demo server only. No barangay or municipal office is automatically notified, no official case number is issued, and no repair or response is guaranteed. Do not collect real residents' personal information or use it for public-service operations without school approval, barangay/LGU permission, and proper privacy/security review.
 
-## Version 2.1 improvements
+## Version 2.2 improvements
 
-- Added a **project introduction page** at `/` that introduces Jerosh Nevado, Grade 12 ICT, and explains the project before visitors enter the portal.
-- Moved the **public report portal** to `/report`.
-- Changed the Barangay field from a pre-filled, read-only value to a required field where the user can select/type `Marifosque`. The prototype still accepts only Barangay Marifosque because that is the proposal's selected project area. Each submitted report must include either a nearby landmark or a map pin.
-- Added an optional interactive location map. A reporter can tap the map, use device location, or type latitude and longitude. A nearby street/landmark can also be provided.
-- Fixed the authority report-detail overlay so the map caption behind the modal no longer covers the report details.
-- Added a map preview and an OpenStreetMap link inside each authority report detail when coordinates exist. Reports without coordinates clearly say that no map pin was provided.
-- Added a Yes/No confirmation before authority sign-out. Confirmed sign-out ends the server session and returns to `/report`.
-- Kept authority report data behind a server-side password session. The session cookie is `HttpOnly` and `SameSite=Strict`; login attempts are limited, passwords are compared using a timing-safe check, and browser write requests with a different Origin are rejected.
-- Set the default server host to `0.0.0.0` for Render and other hosted environments.
-- Expanded automated tests for the new landing page, report route, blank barangay input, map selector, and cross-origin request rejection.
+- Reworked the authority inbox into clear report cards that are easier to tap on phones and easier to scan on desktop.
+- Added a visible **View report details** button on every report card and dashboard report preview.
+- Fixed the report-opening interaction: report details now open immediately from the data already loaded in the protected authority inbox instead of waiting for an unnecessary second API request. A loading state and retry message appear only when a record must be fetched.
+- Added safer click handling for touch, mouse, keyboard, and map-popup report links. Repeated taps on a report no longer start duplicate detail requests.
+- Added a photo evidence placeholder when no photo was attached, so the detail page never appears to have a broken or missing section.
+- Improved map-location empty states and the modal/map stacking on smaller screens.
+- Replaced the browser's generic sign-out prompt with a clear Yes/No confirmation. Choosing Yes ends the session and returns to `/report`, with a short confirmation message; choosing No keeps the authority workspace open.
+- Kept the project flow straightforward: introduction → public report portal → authority inbox → report detail → sign out → public report portal.
+- Kept the design responsive for phones, tablets, laptops, and desktops. The project remains a student prototype and is not connected to an official LGU office.
+
 
 ## User flow
 
@@ -25,8 +25,8 @@
 4. Reporter may tap the map, use device location, enter coordinates, or provide a nearby landmark.
 5. The system saves the demonstration record and displays a report ID.
 6. Reporter uses the report ID in **Check report status**.
-7. The authority user opens `/admin`, signs in, reviews the report, checks the location map, and updates the demo status.
-8. When signing out, the user confirms Yes or No. Choosing Yes ends the session and returns to `/report`.
+7. The authority user opens `/admin`, signs in, taps a report card or **View report details**, checks the photo area and location map, and updates the demo status.
+8. When signing out, a clear Yes/No dialog appears. Choosing Yes ends the session and returns to `/report`; choosing No keeps the authority workspace open.
 
 ## Quick start
 

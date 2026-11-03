@@ -1,15 +1,15 @@
-# Update Pilar360 to v2.1.0 using Termux
+# Update Pilar360 to v2.2.0 using Termux
 
 These steps replace the project code while preserving the existing Git repository, `.env`, `data/reports.json`, and the backup file `server.js.backup`.
 
-1. Download `Pilar360_Jerosh_v2.1.0.zip` to your Android Downloads folder.
+1. Download `Pilar360_Jerosh_v2.2.0.zip` to your Android Downloads folder.
 2. In Termux, run:
 
 ```bash
 termux-setup-storage
 pkg install unzip rsync -y
 mkdir -p ~/Pilar360/update
-unzip -o ~/storage/downloads/Pilar360_Jerosh_v2.1.0.zip -d ~/Pilar360/update
+unzip -o ~/storage/downloads/Pilar360_Jerosh_v2.2.0.zip -d ~/Pilar360/update
 ```
 
 3. Copy the new app files into the existing repository. Do not remove the excludes:
@@ -31,12 +31,13 @@ cd ~/Pilar360/Pilar360_Jerosh
 npm test
 ```
 
-5. Commit and push the update:
+5. Remove the accidentally tracked backup from GitHub while keeping the local copy, then commit and push:
 
 ```bash
+git rm --cached server.js.backup 2>/dev/null || true
 git status
 git add -A
-git commit -m "Upgrade Pilar360 to v2.1.0"
+git commit -m "Upgrade Pilar360 to v2.2.0"
 git push origin main
 ```
 
@@ -51,3 +52,4 @@ If GitHub asks for a password over HTTPS, use your GitHub Personal Access Token 
 - `https://pilar360-jerosh.onrender.com/admin` — authority sign-in
 
 The map tiles need an internet connection. If the map does not load, the reporter can still type coordinates or give a nearby landmark. Use fictional/sample data during a classroom demonstration.
+

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102033">
+  <meta name="description" content="Contact the Pilar360 student developer to report a bug, share feedback, or ask a question.">
+  <title>Pilar360 — Contact Developer</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/contact.css?v=2.5.0">
+  <script defer src="/contact.js?v=2.5.0"></script>
+</head>
+<body>
+  <header class="contact-header">
+    <a class="brand" href="/" aria-label="Pilar360 home"><span class="brand-mark">360</span><span><strong>PILAR<span>360</span></strong><small>DEVELOPER SUPPORT</small></span></a>
+    <a class="back-link" href="/report">Back to report portal</a>
+  </header>
+  <main class="contact-layout">
+    <section class="contact-intro">
+      <span class="eyebrow">QUESTIONS · BUG REPORTS · FEEDBACK</span>
+      <h1>Let’s improve <em>Pilar360.</em></h1>
+      <p>Use this separate page to tell the student developer about a technical problem, suggest an improvement, or ask a question about the prototype.</p>
+      <div class="contact-profile"><div class="profile-mark">J</div><div><strong>Jerosh Nevado</strong><span>Pilar360 student developer</span><a href="mailto:ahukyo@gmail.com">ahukyo@gmail.com</a></div></div>
+      <div class="contact-safety"><strong>Keep your information safe</strong><p>Do not include passwords, one-time codes, private IDs, exact home addresses, or sensitive personal documents in your message.</p></div>
+    </section>
+    <section class="contact-card">
+      <div class="card-heading"><span>DEVELOPER CONTACT FORM</span><h2>What would you like to report?</h2><p>Complete the message and your email app will open with a draft. Review it and press Send.</p></div>
+      <form id="developerContactForm">
+        <label>Your name <small>Optional</small><input id="developerName" maxlength="80" placeholder="Name (optional)"></label>
+        <label>Your email <small>Optional</small><input id="developerReplyEmail" type="email" maxlength="120" placeholder="For a reply (optional)"></label>
+        <label>Concern type<select id="developerConcernType"><option>Report a bug</option><option>Suggest an improvement</option><option>Ask a question</option><option>Other concern</option></select></label>
+        <label>Message<textarea id="developerMessage" required minlength="8" maxlength="2000" rows="6" placeholder="Describe what happened, what page you were using, and what you expected to happen."></textarea><span class="counter" id="messageCount">0 / 2000</span></label>
+        <button type="submit" class="send-button">Prepare email <span>→</span></button>
+        <p class="form-note">Pilar360 does not store or send this message. Your email application handles delivery.</p>
+      </form>
+    </section>
+  </main>
+  <footer class="contact-footer"><span>© 2026 Pilar360 · Independent student prototype</span><a href="/report">Public report portal</a><a href="/admin">Authority workspace</a></footer>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

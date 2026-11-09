@@ -1,18 +1,34 @@
-# Update Pilar360 to v2.3.0 using Termux
+# Update Pilar360 to v2.5.0 using Termux
 
 These steps replace the project code while preserving your existing Git repository, `.env`, report data file and `server.js.backup`.
 
-1. Download `Pilar360_Jerosh_v2.3.0.zip` to your Android Downloads folder.
-2. In Termux, run:
+1. Download `Pilar360_Jerosh_v2.5.0.zip` to your Android Downloads folder.
+2. In Termux, prepare storage and the required tools:
 
 ```bash
 termux-setup-storage
-pkg install unzip rsync -y
-mkdir -p ~/Pilar360/update
-unzip -o ~/storage/downloads/Pilar360_Jerosh_v2.3.0.zip -d ~/Pilar360/update
+pkg update
+pkg install nodejs-lts git unzip rsync -y
+node -v
+npm -v
 ```
 
-3. Copy the new app files into the existing repository. Do not remove the excludes:
+3. Back up the current project before replacing files:
+
+```bash
+mkdir -p ~/Pilar360/backups
+cp -a ~/Pilar360/Pilar360_Jerosh \
+  ~/Pilar360/backups/Pilar360_Jerosh_before_v2.5.0
+```
+
+4. Extract the downloaded ZIP:
+
+```bash
+mkdir -p ~/Pilar360/update
+unzip -o ~/storage/downloads/Pilar360_Jerosh_v2.5.0.zip -d ~/Pilar360/update
+```
+
+5. Copy the new app files into the existing repository. Do not remove the excludes:
 
 ```bash
 cd ~/Pilar360/Pilar360_Jerosh
@@ -21,30 +37,31 @@ rsync -av --delete \
   --exclude='.env' \
   --exclude='data/reports.json' \
   --exclude='server.js.backup' \
+  --exclude='node_modules/' \
   ~/Pilar360/update/Pilar360_Jerosh/ \
   ~/Pilar360/Pilar360_Jerosh/
 ```
 
-4. Run the tests:
+6. Run the tests:
 
 ```bash
 npm install
 npm test
 ```
 
-5. Review the Git changes, then commit and push:
+7. Review the Git changes, then commit and push:
 
 ```bash
 git rm --cached server.js.backup 2>/dev/null || true
 git status
 git add -A
-git commit -m "Upgrade Pilar360 to v2.3.0"
+git commit -m "Upgrade Pilar360 to v2.5.0"
 git push origin main
 ```
 
 If GitHub asks for a password over HTTPS, use your GitHub Personal Access Token at the password prompt. Never paste the token into a chat or save it in a project file.
 
-6. Render should auto-deploy after the push. Wait until the latest commit shows **Live**. Keep `PILAR360_ADMIN_PASSWORD` configured in Render Environment settings. Do not add it to GitHub.
+8. Render should auto-deploy after the push. Wait until the latest commit shows **Live**. Keep `PILAR360_ADMIN_PASSWORD` configured in Render Environment settings. Do not add it to GitHub.
 
 ## Optional phone and SMS setup
 

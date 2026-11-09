@@ -2,7 +2,7 @@
 
 /* Pilar 360 frontend — vanilla JavaScript, no build process, demo API only. */
 (() => {
-  const state = { page: 'dashboard', reports: [], stats: null, search: '', statusFilter: 'All', categoryFilter: 'All', mapInstances: [], detailMapInstance: null, currentDetail: null, authenticated: false, detailRequestToken: 0, openingReportId: null };
+  const state = { page: 'dashboard', reports: [], stats: null, search: '', statusFilter: 'All', categoryFilter: 'All', approvedQueueIds: new Set(), mapInstances: [], detailMapInstance: null, currentDetail: null, authenticated: false, detailRequestToken: 0, openingReportId: null, mapLoadScheduled: false };
   const CATEGORY_META = {
     'Road & Sidewalk': { icon: '🛣️', tone: 'road', department: 'Municipal Engineering' },
     'Waste & Cleanliness': { icon: '♻️', tone: 'waste', department: 'Municipal Environment' },
@@ -13,8 +13,8 @@
     'Parks & Public Spaces': { icon: '🌳', tone: 'waste', department: 'General Services' },
     'Other': { icon: '📍', tone: 'public', department: 'Unassigned' }
   };
-  const STATUS_CLASS = { 'Submitted': 'status-submitted', 'Under Review': 'status-review', 'Assigned': 'status-assigned', 'In Progress': 'status-progress', 'Resolved': 'status-resolved', 'Closed': 'status-closed' };
-  const STATUSES = ['Submitted', 'Under Review', 'Assigned', 'In Progress', 'Resolved', 'Closed'];
+  const STATUS_CLASS = { 'Submitted': 'status-submitted', 'Under Review': 'status-review', 'Approved': 'status-approved', 'Assigned': 'status-assigned', 'In Progress': 'status-progress', 'Resolved': 'status-resolved', 'Closed': 'status-closed' };
+  const STATUSES = ['Submitted', 'Under Review', 'Approved', 'Assigned', 'In Progress', 'Resolved', 'Closed'];
   const CATEGORIES = Object.keys(CATEGORY_META);
   const DEPARTMENTS = ['Unassigned', 'Municipal Engineering', 'Municipal Environment', 'General Services', 'Utilities Coordination', 'Public Safety', 'Barangay Coordination'];
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -75,7 +75,7 @@
     script.onload = () => {
       mapLibraryLoading = false;
       if (state.authenticated && state.currentDetail && $('#reportDetailMap')) initDetailMap(state.currentDetail);
-      else if (state.authenticated && (state.page === 'dashboard' || state.page === 'map')) renderPage();
+      else if (state.authenticated && state.page === 'map') renderPage();
     };
     script.onerror = () => {
       if (script.dataset.fallback === 'used') { mapLibraryLoading = false; return; }
@@ -87,10 +87,11 @@
 
   async function loadData({ keepPage = true } = {}) {
     try {
-      const [reportsPayload, stats] = await Promise.all([api('/api/reports'), api('/api/stats')]);
-      state.reports = Array.isArray(reportsPayload.reports) ? reportsPayload.reports : [];
-      state.stats = stats;
+      const workspace = await api('/api/workspace');
+      state.reports = Array.isArray(workspace.reports) ? workspace.reports : [];
+      state.stats = workspace.stats || null;
       $('#navReportCount').textContent = String(state.reports.length);
+      $('#navApprovedCount').textContent = String(state.reports.filter(isInApprovalQueue).length);
       if (keepPage) renderPage();
     } catch (error) {
       if (/401|Authority access required/i.test(error.message)) { state.authenticated = false; showAdminLock('Your authority session has expired. Please sign in again.'); return; }
@@ -117,35 +118,79 @@
     const stats = currentStats();
     const latest = [...state.reports].sort(byNewest).slice(0, 5);
     const urgent = state.reports.filter(r => r.priority === 'Urgent' && !['Resolved', 'Closed'].includes(r.status)).length;
-    const heading = pageHeading(new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date()).toUpperCase(), 'Let’s make Pilar better.', 'A clearer way for the community to raise concerns, track action, and help improve local spaces.', '<a class="btn btn-primary" href="/report">Open public report portal ↗</a>');
+    const approved = state.reports.filter(r => r.status === 'Approved').length;
+    const queued = state.reports.filter(isInApprovalQueue).length;
+    const heading = pageHeading('AUTHORITY WORKSPACE · BARANGAY MARIFOSQUE', 'Community overview', 'A clear workspace for reviewing reports, updating ticket status, and checking community concerns.', '<a class="btn btn-ghost" href="/report">Open public portal ↗</a>');
+    const statusRows = STATUSES.map(status => ({ status, count: state.reports.filter(r => r.status === status).length }))
+      .filter(item => item.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+    const maxStatus = Math.max(1, ...statusRows.map(item => item.count));
     $('#pageContent').innerHTML = `${heading}
-      <section class="hero-panel"><div class="hero-copy"><div class="hero-kicker"><span></span> COMMUNITY-POWERED IMPROVEMENT</div><h2>Small reports.<br><em>Visible progress.</em></h2><p>Spot a road issue, blocked drainage, uncollected waste, or broken streetlight? Document it clearly and follow its progress in one place.</p><div class="hero-actions"><button class="btn btn-primary" data-page="reports">Review incoming reports</button><button class="hero-link" data-page="reports">Explore reports <span>↗</span></button></div></div><div class="hero-art" aria-hidden="true"><div class="hero-orbit"><div class="hero-pin"><span>⌖</span></div><div class="orbit-chip one"><b>${stats.total}</b> total reports</div><div class="orbit-chip two"><b>${stats.resolved}</b> resolved / closed</div></div></div></section>
-      <section class="stats-grid" aria-label="Report statistics">${statCard('All reports', stats.total, 'Barangay Marifosque demo records', '▤', '', 'DEMO')}${statCard('Open concerns', stats.active, 'Not yet resolved or closed', '◷', 'orange', stats.active ? 'ACTIVE' : 'CLEAR')}${statCard('Resolved / closed', stats.resolved, `${stats.resolutionRate}% of all reports`, '✓', 'blue', `${stats.resolutionRate}%`)}${statCard('Urgent priorities', urgent, 'Needs prompt assessment', '⚑', 'purple', urgent ? 'REVIEW' : 'NONE')}</section>
-      <section class="content-grid"><article class="panel"><div class="panel-header"><div><h3 class="panel-title">Community issue map</h3><p class="panel-subtitle">User-provided pins for Barangay Marifosque</p></div><button class="text-action" data-page="map">Open full map ↗</button></div><div class="map-preview"><div id="mapDashboard"></div><div class="map-no-network hidden" id="mapFallbackDash"><span>⌖</span><strong>Community location view</strong><small>Map tiles need an internet connection</small></div><div class="map-caption"><strong>Pilar, Sorsogon</strong>Demo coordinates · not official boundaries</div></div><div class="panel-footer"><div class="legend"><span><i style="background:#f4a178"></i>Urgent / high</span><span><i style="background:#85b5f4"></i>Other concerns</span><span><i style="background:#89bb50"></i>Resolved</span></div><span>${state.reports.filter(hasCoordinates).length} mapped</span></div></article>
-      <article class="panel"><div class="panel-header"><div><h3 class="panel-title">Latest community reports</h3><p class="panel-subtitle">A live view of the local demo queue</p></div><button class="text-action" data-page="reports">View all ↗</button></div><div class="recent-list">${latest.length ? latest.map(r => reportRow(r)).join('') : `<div class="empty-state"><strong>No reports yet</strong>Submit the first demo report to get started.</div>`}</div><div class="panel-footer"><span>Sorted by latest submission</span><span>Auto-updated on refresh</span></div></article></section>
-      <section class="content-grid" style="margin-top:16px"><article class="panel"><div class="panel-header"><div><h3 class="panel-title">Where attention is needed</h3><p class="panel-subtitle">Issues by category · demo dataset</p></div><button class="text-action" data-page="insights">View insights ↗</button></div><div class="category-bars">${barsForCategories()}</div></article><article class="panel"><div class="panel-header"><div><h3 class="panel-title">A simple reporting journey</h3><p class="panel-subtitle">Designed for residents and community coordinators</p></div></div><div class="category-bars"><div class="bar-meta"><strong>01 · Document</strong><span>Photo + details</span></div><div style="font-size:10px;color:#8c9aa4;line-height:1.65;margin-top:-11px">Describe what happened and where it can be found.</div><div class="bar-meta"><strong>02 · Review</strong><span>Classify + assign</span></div><div style="font-size:10px;color:#8c9aa4;line-height:1.65;margin-top:-11px">A demo coordinator can update the status and responsible unit.</div><div class="bar-meta"><strong>03 · Follow through</strong><span>Track changes</span></div><div style="font-size:10px;color:#8c9aa4;line-height:1.65;margin-top:-11px">See the report timeline and whether it is marked resolved.</div></div></article></section>`;
-    initMap('mapDashboard', 'mapFallbackDash', { mini: true });
+      <section class="overview-banner">
+        <div class="overview-banner-copy"><span class="overview-kicker"><i></i> PILAR360 · LOCAL DEMO</span><h2>Every report deserves a clear update.</h2><p>Review what residents submitted, record the latest status, and let ticket holders follow progress through their report ID.</p><div class="overview-banner-actions"><button class="btn btn-primary" data-page="reports">Open report inbox <span aria-hidden="true">→</span></button><button class="btn btn-light-outline" data-page="map">View issue map</button></div></div>
+        <div class="overview-queue-tile"><span>Approved this session</span><strong>${queued}</strong><small>${approved} report${approved === 1 ? '' : 's'} currently marked Approved</small><button type="button" data-page="approvals">Open approved queue ↗</button></div>
+      </section>
+      <section class="stats-grid" aria-label="Report statistics">${statCard('All reports', stats.total, 'Saved demo records', '▤', '', 'TOTAL')}${statCard('Open concerns', stats.active, 'Not yet resolved or closed', '◷', 'orange', stats.active ? 'ACTIVE' : 'CLEAR')}${statCard('Approved', approved, 'Current saved status', '✓', 'blue', approved ? 'APPROVED' : 'NONE')}${statCard('Urgent priorities', urgent, 'Needs prompt assessment', '⚑', 'purple', urgent ? 'REVIEW' : 'NONE')}</section>
+      <section class="overview-lower-grid"><article class="panel"><div class="panel-header"><div><h3 class="panel-title">Latest report activity</h3><p class="panel-subtitle">The newest submissions in this workspace</p></div><button class="text-action" data-page="reports">View all reports ↗</button></div><div class="recent-list">${latest.length ? latest.map(r => reportRow(r)).join('') : `<div class="empty-state"><strong>No reports yet</strong>Submit a demo report through the public portal to get started.</div>`}</div><div class="panel-footer"><span>Sorted by latest submission</span><span>${state.reports.length} records</span></div></article>
+      <div class="overview-side-stack"><article class="panel overview-status-panel"><div class="panel-header"><div><h3 class="panel-title">Status snapshot</h3><p class="panel-subtitle">Current workflow distribution</p></div><button class="text-action" data-page="insights">Insights ↗</button></div><div class="overview-status-list">${statusRows.map(item => `<div class="overview-status-row"><div><span>${escapeHtml(item.status)}</span><strong>${item.count}</strong></div><div class="overview-status-track"><i style="width:${Math.round(item.count / maxStatus * 100)}%"></i></div></div>`).join('') || `<div class="empty-state">No status data yet.</div>`}</div></article>
+      <article class="panel overview-shortcuts"><div class="panel-header"><div><h3 class="panel-title">Quick navigation</h3><p class="panel-subtitle">Go directly to a workspace section</p></div></div><button type="button" data-page="approvals"><span class="shortcut-icon">✓</span><span><strong>Approved queue</strong><small>${queued} temporary item${queued === 1 ? '' : 's'} in this session</small></span><b>→</b></button><button type="button" data-page="map"><span class="shortcut-icon">⌖</span><span><strong>Community map</strong><small>View submitted location pins</small></span><b>→</b></button><button type="button" data-page="settings"><span class="shortcut-icon">⚙</span><span><strong>Workspace settings</strong><small>Project and demo data information</small></span><b>→</b></button></article></div></section>`;
+  }
+  function isInApprovalQueue(report) {
+    if (report.status !== 'Approved' || !state.approvedQueueIds.has(report.id)) return false;
+    const expiry = new Date(report.approvalExpiresAt || new Date(new Date(report.approvedAt || report.updatedAt).getTime() + 24 * 60 * 60 * 1000));
+    return Number.isFinite(expiry.getTime()) && expiry.getTime() > Date.now();
+  }
+  function approvalTimeLeft(report) {
+    const expiry = new Date(report.approvalExpiresAt || new Date(new Date(report.approvedAt || report.updatedAt).getTime() + 24 * 60 * 60 * 1000));
+    const remaining = Math.max(0, expiry.getTime() - Date.now());
+    const hours = Math.floor(remaining / 3600000);
+    const minutes = Math.floor((remaining % 3600000) / 60000);
+    return `${hours}h ${minutes}m left in queue`;
   }
   function filteredReports() {
     const q = state.search.trim().toLowerCase();
-    return [...state.reports].filter(r => (state.statusFilter === 'All' || (state.statusFilter === 'Open' ? !['Resolved', 'Closed'].includes(r.status) : r.status === state.statusFilter)) && (state.categoryFilter === 'All' || r.category === state.categoryFilter) && (!q || [r.id, r.title, r.description, r.category, r.barangay, r.address, r.department, r.reporter].some(value => String(value || '').toLowerCase().includes(q)))).sort(byNewest);
+    return [...state.reports].filter(r => {
+      const matchesStatus = state.statusFilter === 'All'
+        || (state.statusFilter === 'Open' ? !['Resolved', 'Closed'].includes(r.status) : state.statusFilter === 'Approved Queue' ? isInApprovalQueue(r) : r.status === state.statusFilter);
+      const matchesCategory = state.categoryFilter === 'All' || r.category === state.categoryFilter;
+      const matchesSearch = !q || [r.id, r.title, r.description, r.category, r.barangay, r.address, r.department, r.reporter].some(value => String(value || '').toLowerCase().includes(q));
+      return matchesStatus && matchesCategory && matchesSearch;
+    }).sort(byNewest);
   }
   function reportCard(report) {
     const location = [report.barangay ? `Brgy. ${report.barangay}` : '', report.address || 'Landmark not provided'].filter(Boolean).join(' · ');
+    const approvalExpiry = state.statusFilter === 'Approved Queue' && isInApprovalQueue(report) ? `<small class="approval-expiry">${approvalTimeLeft(report)}</small>` : '';
     return `<article class="inbox-card" data-open-report="${escapeHtml(report.id)}" tabindex="0" role="button" aria-label="Open report ${escapeHtml(report.title)}">
-      <div class="inbox-card-top">${categoryIcon(report.category)}<div class="inbox-card-heading"><strong>${escapeHtml(report.title)}</strong><small>${escapeHtml(report.id)} · ${relativeTime(report.createdAt)}</small></div>${statusPill(report.status)}</div>
+      <div class="inbox-card-top">${categoryIcon(report.category)}<div class="inbox-card-heading"><strong>${escapeHtml(report.title)}</strong><small>${escapeHtml(report.id)} · ${relativeTime(report.createdAt)}</small>${approvalExpiry}</div>${statusPill(report.status)}</div>
       <div class="inbox-card-info"><span><b>Reporter</b>${escapeHtml(report.reporter || 'Not provided')}</span><span><b>Location</b>${escapeHtml(location || 'Not provided')}</span><span><b>Assigned unit</b>${escapeHtml(report.department || 'Unassigned')}</span></div>
       <div class="inbox-card-bottom"><span class="priority ${escapeHtml(report.priority || 'Normal')}">${escapeHtml(report.priority || 'Normal')} priority</span><span class="btn btn-primary btn-sm">View report details <span aria-hidden="true">→</span></span></div>
     </article>`;
   }
+
+  function renderApprovals() {
+    const rows = state.reports.filter(isInApprovalQueue).sort((a, b) => new Date(b.approvedAt || b.updatedAt) - new Date(a.approvedAt || a.updatedAt));
+    const heading = pageHeading('TEMPORARY AUTHORITY QUEUE', 'Approved tickets', 'Review ticket IDs marked Approved in this browser session. Their saved public status remains available after the temporary queue expires.', '<button class="btn btn-ghost" data-page="reports">All reports</button>');
+    $('#pageContent').innerHTML = `${heading}
+      <section class="approval-explainer"><div class="approval-explainer-icon">✓</div><div><strong>Approval is visible to reporters</strong><p>Approved ticket IDs and their current status appear in the public ticket directory and Check Report Status page. The quick-access queue clears after 24 hours or when the authority page is refreshed/reopened. The saved report record is not deleted.</p></div></section>
+      <div class="inbox-summary"><strong>${rows.length} approved ticket${rows.length === 1 ? '' : 's'} in this queue</strong><span>Temporary queue · sorted by latest approval</span></div>
+      <section class="inbox-grid" id="approvedCardList">${rows.map(reportCard).join('') || `<div class="empty-state inbox-empty"><strong>No approved tickets in this session</strong>Open an issue report, choose Approved, then save the status update.</div>`}</section>
+      <div class="table-count">Only ticket ID, category and status are shown publicly. Private report details remain restricted.</div>`;
+  }
+
   function renderReports() {
     const rows = filteredReports();
-    const heading = pageHeading('AUTHORITY INBOX', 'Issue reports', 'Choose a report to see its details, photo, map location, and status controls.', '<a class="btn btn-ghost" href="/report">Public report portal ↗</a>');
+    const approvedQueueCount = state.reports.filter(isInApprovalQueue).length;
+    const heading = pageHeading('AUTHORITY INBOX', 'Issue reports', 'Review incoming concerns, save a clear status, and follow every ticket ID.', '<a class="btn btn-ghost" href="/report">Public report portal ↗</a>');
+    const queueHint = state.statusFilter === 'Approved Queue'
+      ? 'This temporary queue clears after 24 hours or when the authority page is refreshed/reopened. The ticket status and history remain saved.'
+      : 'The Approved queue is temporary: it clears after 24 hours or when the authority page is refreshed/reopened. Ticket history remains saved.';
     $('#pageContent').innerHTML = `${heading}
+      <div class="approval-queue-strip"><div><strong>Approved queue</strong><span>Temporary list · clears after 24 hours or page refresh</span></div><b>${approvedQueueCount}</b><button type="button" class="btn btn-ghost btn-sm" data-filter-approved-queue>View approved tickets →</button></div>
       <div class="page-tools"><label class="input-wrap"><span>⌕</span><input id="reportSearch" type="search" value="${escapeHtml(state.search)}" placeholder="Search title, reporter, ID, location…"></label>
-      <select class="filter-select" id="statusFilter" aria-label="Filter by status"><option value="All">All reports</option><option value="Open" ${state.statusFilter === 'Open' ? 'selected' : ''}>Open reports</option>${STATUSES.map(status => `<option value="${status}" ${state.statusFilter === status ? 'selected' : ''}>${status}</option>`).join('')}</select>
+      <select class="filter-select" id="statusFilter" aria-label="Filter by status"><option value="All">All reports</option><option value="Open" ${state.statusFilter === 'Open' ? 'selected' : ''}>Open reports</option><option value="Approved Queue" ${state.statusFilter === 'Approved Queue' ? 'selected' : ''}>Approved queue · 24h</option>${STATUSES.map(status => `<option value="${status}" ${state.statusFilter === status ? 'selected' : ''}>${status} · history</option>`).join('')}</select>
       <select class="filter-select" id="categoryFilter" aria-label="Filter by category"><option>All</option>${CATEGORIES.map(category => `<option ${state.categoryFilter === category ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select><button class="btn btn-ghost" data-action="clear-filters">Reset filters</button></div>
-      <div class="inbox-summary"><strong>${rows.length} report${rows.length === 1 ? '' : 's'}</strong><span>Tap “View report details” to open a submission.</span></div>
+      <div class="inbox-summary"><strong>${rows.length} report${rows.length === 1 ? '' : 's'}</strong><span>${state.statusFilter === 'Approved Queue' ? queueHint : 'Tap “View report details” to open a submission.'}</span></div>
       <section class="inbox-grid" id="reportCardList">${rows.map(reportCard).join('') || `<div class="empty-state inbox-empty"><strong>No matching reports</strong>Try another search or submit a new concern.</div>`}</section>
       <div class="table-count" id="reportCountText">Showing ${rows.length} of ${state.reports.length} reports · Prototype records only</div>`;
   }
@@ -159,7 +204,7 @@
     $('#pageContent').innerHTML = `${pageHeading('DATA SNAPSHOT', 'Community insights', 'A lightweight operational view of what residents are reporting. Counts are calculated from this prototype’s local dataset.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export JSON</button>')}<section class="stats-grid">${statCard('Total reports', totals, 'All categories and statuses', '▤', '', 'DEMO')}${statCard('High / urgent open', highPriority, 'Prioritize assessment', '⚑', 'orange', highPriority ? 'REVIEW' : 'NONE')}${statCard('Location missing', noLocation, 'Reports without map coordinates', '⌖', 'blue', noLocation ? 'CHECK' : 'READY')}${statCard('Resolved share', `${stats.resolutionRate}%`, 'Resolved or closed', '✓', 'purple', `${stats.resolutionRate}%`)}</section><section class="insights-grid"><article class="insight-card"><h3>Workflow distribution</h3><p>How reports are moving through the demo process.</p><div class="status-bars">${statuses.map(item => `<div class="status-bar-row"><span>${escapeHtml(item.status)}</span><div class="status-bar-track"><div class="status-bar-fill" style="width:${Math.round(item.count / max * 100)}%;background:${item.status === 'Resolved' || item.status === 'Closed' ? '#8dbd55' : item.status === 'Urgent' ? '#ef8d70' : '#92b5ed'}"></div></div><strong>${item.count}</strong></div>`).join('')}</div><div class="insight-summary"><div class="summary-circle">${totals ? Math.round(stats.resolutionRate) : 0}%</div><div><strong>Resolution / closure share</strong><br>This is a status ratio only. It is not a service-level guarantee or an official municipal performance measure.</div></div></article><article class="insight-card"><h3>Reports by category</h3><p>Use this to spot recurring topics in the sample data.</p><div class="status-bars">${CATEGORIES.map((category, index) => ({ category, count: state.reports.filter(r => r.category === category).length })).sort((a,b) => b.count - a.count).map((item,index) => `<div class="status-bar-row"><span>${escapeHtml(item.category)}</span><div class="status-bar-track"><div class="status-bar-fill" style="width:${Math.round(item.count / Math.max(1, totals) * 100)}%;background:${['#8dbd55','#92b5ed','#efad79','#a99bf5','#8fc5be'][index % 5]}"></div></div><strong>${item.count}</strong></div>`).join('')}</div><div class="insight-summary"><div class="summary-circle">${CATEGORIES.filter(category => state.reports.some(r => r.category === category)).length}</div><div><strong>Categories represented</strong><br>Categories with at least one report in the current local dataset.</div></div></article></section><div class="warning-note">Prototype analytics only: the sample records are fictional, and these numbers do not represent actual complaints or response performance in Pilar, Sorsogon.</div>`;
   }
   function renderSettings() {
-    $('#pageContent').innerHTML = `${pageHeading('PROJECT INFORMATION', 'Workspace & settings', 'Manage this local prototype, review the technical boundaries, and restore the original sample records.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export data</button>')}<section class="settings-grid"><article class="setting-card"><h3>Project identity</h3><p>Pilar 360 is an independent civic reporting prototype designed and built by Jerosh. It is not an official application of the Municipality of Pilar.</p><div class="setting-line"><span>Project</span><strong>Pilar 360</strong></div><div class="setting-line"><span>Builder</span><strong>Jerosh</strong></div><div class="setting-line"><span>Version</span><strong>2.3.0-demo</strong></div><div class="setting-line"><span>Runtime</span><strong>Node.js · native modules</strong></div><div class="setting-line"><span>Storage</span><strong>Local JSON database</strong></div></article><article class="setting-card"><h3>Demo data controls</h3><p>Submitted reports are written to <code>data/reports.json</code>. Resetting replaces the dataset with fictional sample reports; export before resetting if you need to keep your local demo entries.</p><div class="setting-line"><span>Current report count</span><strong>${state.reports.length}</strong></div><div class="setting-line"><span>Demo photos</span><strong>Stored as data URLs</strong></div><div class="setting-line"><span>Real LGU integration</span><strong>Not connected</strong></div><button class="btn btn-dark" data-action="reset-demo">↻ Restore sample dataset</button><div class="warning-note">Reset is permanent for the local demo file. Export your data first if you want to preserve it.</div></article><article class="setting-card"><h3>Privacy & deployment notes</h3><p>Use only for an approved classroom demonstration. Hosted access and HTTPS depend on the configured hosting provider.</p><div class="setting-line"><span>Authentication</span><strong>Protected demo sign-in</strong></div><div class="setting-line"><span>HTTPS / TLS</span><strong>Hosting dependent</strong></div><div class="setting-line"><span>Official case numbers</span><strong>Not issued</strong></div><div class="setting-line"><span>Emergency dispatch</span><strong>Not supported</strong></div></article><article class="setting-card"><h3>Production readiness checklist</h3><p>Before any real community use, the prototype needs a trusted LGU partner and a secured production architecture.</p>${['Municipality approval and official ownership','Authenticated citizen and staff accounts','Role-based permissions and audit logs','Secure file storage and backup policy','Privacy notice and data-retention rules','Verified map/geocoding and department routing','Monitoring, rate limiting and abuse prevention'].map(item => `<div class="setting-line"><span>${escapeHtml(item)}</span><strong style="color:#c87551">Not yet</strong></div>`).join('')}</article></section>`;
+    $('#pageContent').innerHTML = `${pageHeading('PROJECT INFORMATION', 'Workspace & settings', 'Manage this local prototype, review the technical boundaries, and restore the original sample records.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export data</button>')}<section class="settings-grid"><article class="setting-card"><h3>Project identity</h3><p>Pilar 360 is an independent civic reporting prototype designed and built by Jerosh. It is not an official application of the Municipality of Pilar.</p><div class="setting-line"><span>Project</span><strong>Pilar 360</strong></div><div class="setting-line"><span>Builder</span><strong>Jerosh</strong></div><div class="setting-line"><span>Version</span><strong>2.5.0-demo</strong></div><div class="setting-line"><span>Runtime</span><strong>Node.js · native modules</strong></div><div class="setting-line"><span>Storage</span><strong>Local JSON database</strong></div></article><article class="setting-card"><h3>Demo data controls</h3><p>Submitted reports are written to <code>data/reports.json</code>. Resetting replaces the dataset with fictional sample reports; export before resetting if you need to keep your local demo entries.</p><div class="setting-line"><span>Current report count</span><strong>${state.reports.length}</strong></div><div class="setting-line"><span>Demo photos</span><strong>Stored as data URLs</strong></div><div class="setting-line"><span>Real LGU integration</span><strong>Not connected</strong></div><button class="btn btn-dark" data-action="reset-demo">↻ Restore sample dataset</button><div class="warning-note">Reset is permanent for the local demo file. Export your data first if you want to preserve it.</div></article><article class="setting-card"><h3>Privacy & deployment notes</h3><p>Use only for an approved classroom demonstration. Hosted access and HTTPS depend on the configured hosting provider.</p><div class="setting-line"><span>Authentication</span><strong>Protected demo sign-in</strong></div><div class="setting-line"><span>HTTPS / TLS</span><strong>Hosting dependent</strong></div><div class="setting-line"><span>Official case numbers</span><strong>Not issued</strong></div><div class="setting-line"><span>Emergency dispatch</span><strong>Not supported</strong></div></article><article class="setting-card"><h3>Production readiness checklist</h3><p>Before any real community use, the prototype needs a trusted LGU partner and a secured production architecture.</p>${['Municipality approval and official ownership','Authenticated citizen and staff accounts','Role-based permissions and audit logs','Secure file storage and backup policy','Privacy notice and data-retention rules','Verified map/geocoding and department routing','Monitoring, rate limiting and abuse prevention'].map(item => `<div class="setting-line"><span>${escapeHtml(item)}</span><strong style="color:#c87551">Not yet</strong></div>`).join('')}</article></section>`;
   }
   function destroyMaps() {
     for (const map of state.mapInstances) { try { map.remove(); } catch {} }
@@ -168,15 +213,28 @@
   }
   function renderPage() {
     destroyMaps();
-    $$('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.page === state.page));
-    const labels = { dashboard: 'Overview', reports: 'Issue reports', map: 'Community map', insights: 'Insights', settings: 'Workspace' };
+    $$('.nav-item, .mobile-bottom-nav [data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === state.page));
+    const labels = { dashboard: 'Overview', reports: 'Issue reports', approvals: 'Approved queue', map: 'Community map', insights: 'Insights', settings: 'Workspace' };
     $('#crumbCurrent').textContent = labels[state.page] || 'Overview';
     $('#yearNow').textContent = new Date().getFullYear();
     if (state.page === 'dashboard') renderDashboard();
     else if (state.page === 'reports') renderReports();
+    else if (state.page === 'approvals') renderApprovals();
     else if (state.page === 'map') renderMapPage();
     else if (state.page === 'insights') renderInsights();
     else renderSettings();
+    scheduleMapLibrary();
+  }
+  function scheduleMapLibrary() {
+    if (state.mapLoadScheduled || window.L || !state.authenticated) return;
+    if (state.page !== 'map' && !state.currentDetail) return;
+    state.mapLoadScheduled = true;
+    const run = () => {
+      state.mapLoadScheduled = false;
+      if (state.authenticated && (state.page === 'map' || state.currentDetail)) loadMapLibrary();
+    };
+    if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 2200 });
+    else window.setTimeout(run, 900);
   }
   function initMap(containerId, fallbackId, { mini }) {
     const container = document.getElementById(containerId);
@@ -273,20 +331,14 @@
     const mapSection = hasCoordinates(report)
       ? `<section class="detail-map-card"><div class="detail-map-heading"><div><strong>Reported map location</strong><small>Pin based on the coordinates entered by the reporter.</small></div><a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(report.lat)}&mlon=${encodeURIComponent(report.lng)}#map=17/${encodeURIComponent(report.lat)}/${encodeURIComponent(report.lng)}" target="_blank" rel="noopener noreferrer">Open larger map ↗</a></div><div class="detail-map-wrap"><div id="reportDetailMap" class="detail-map"></div><div id="detailMapFallback" class="detail-map-fallback hidden">Map tiles could not load. The location coordinates are still available below. Open the larger map link to view the pin.</div></div><div class="detail-map-coordinates">${escapeHtml(report.lat)}, ${escapeHtml(report.lng)} · ${escapeHtml(report.address || report.barangay || 'No landmark provided')}</div></section>`
       : `<section class="detail-map-card"><div class="detail-map-heading"><div><strong>Reported map location</strong><small>No map pin was attached to this report.</small></div></div><div class="detail-map-empty"><span class="empty-map-icon">⌖</span><strong>${escapeHtml(report.address || 'No nearby street or landmark was provided.')}</strong><span>There are no coordinates to place on the map. The reporter can still be identified by the landmark they entered.</span></div></section>`;
-    host.innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-head"><div><div class="eyebrow">REPORT DETAIL · ${escapeHtml(report.id)}</div><h2 id="detailTitle">Report overview</h2><p>Review the submission, reported location, and status history.</p></div><button class="close-modal" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="detail-hero">${categoryIcon(report.category)}<div><h3>${escapeHtml(report.title)}</h3><small>Submitted ${formatDate(report.createdAt, { hour: 'numeric', minute: '2-digit' })} · ${escapeHtml(report.reporter || 'Community member')}</small></div></div><div class="detail-tags">${statusPill(report.status)}<span class="priority ${escapeHtml(report.priority || 'Normal')}">${escapeHtml(report.priority || 'Normal')} priority</span></div><p class="detail-description">${escapeHtml(report.description)}</p>${imageHtml}<div class="detail-grid"><div class="detail-field"><small>Submitted by</small><strong>${escapeHtml(report.reporter || 'Not provided')}</strong></div><div class="detail-field"><small>Contact number · authority only</small><strong>${report.phone ? `<a href="tel:${escapeHtml(report.phone)}">${escapeHtml(report.phone)}</a>` : (report.phoneProtected ? 'Unavailable — check the server encryption key' : 'Not provided')}</strong></div><div class="detail-field"><small>Category</small><strong>${escapeHtml(report.category)}</strong></div><div class="detail-field"><small>Barangay</small><strong>${escapeHtml(report.barangay || 'Not specified')}</strong></div><div class="detail-field"><small>Location / landmark</small><strong>${escapeHtml(report.address || 'No landmark provided')}</strong></div><div class="detail-field"><small>Assigned unit</small><strong>${escapeHtml(report.department || 'Unassigned')}</strong></div><div class="detail-field"><small>Coordinates</small><strong>${hasCoordinates(report) ? `${escapeHtml(report.lat)}, ${escapeHtml(report.lng)}` : 'Not provided'}</strong></div><div class="detail-field"><small>Last updated</small><strong>${formatDate(report.updatedAt, { hour: 'numeric', minute: '2-digit' })}</strong></div></div>${mapSection}<div class="timeline"><h4>Activity timeline</h4>${timeline.length ? timeline.map(item => `<div class="timeline-item"><div class="timeline-dot"></div><div><strong>${escapeHtml(item.status)}</strong><p>${escapeHtml(item.note || 'Status update recorded.')}</p><time>${formatDate(item.at, { hour: 'numeric', minute: '2-digit' })}</time></div></div>`).join('') : `<div class="empty-state">No activity recorded.</div>`}</div><div class="admin-editor"><h4>AUTHORITY STATUS CONTROLS <span style="font-size:8px;color:#668f39;font-weight:700">· signed-in demo session</span></h4><form id="updateReportForm" data-report-id="${escapeHtml(report.id)}"><div class="form-grid"><div class="form-field"><label for="updateStatus">Status</label><select id="updateStatus" name="status">${STATUSES.map(status => `<option ${report.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div><div class="form-field"><label for="updateDepartment">Assigned unit</label><select id="updateDepartment" name="department">${DEPARTMENTS.map(department => `<option ${report.department === department ? 'selected' : ''}>${department}</option>`).join('')}</select></div><div class="form-field full"><label for="updateNote">Internal authority note</label><textarea id="updateNote" name="note" maxlength="500" placeholder="Add an internal note for the authority record (optional)."></textarea></div></div><div class="form-bottom"><small>Changes are stored in this prototype’s demo data and added to the report timeline.</small><button class="btn btn-dark" type="submit" id="saveUpdateButton">Save status update</button></div></form></div></div></section></div>`;
+    const authorityEditor = `<div class="admin-editor admin-editor-priority"><div class="editor-title-row"><div><span class="editor-kicker">AUTHORITY ACTION</span><h4>Update ticket status</h4></div><span class="editor-session">Signed-in session</span></div><p class="status-control-hint">Save a new status to update the report timeline and public ticket tracker. Choosing Approved also adds this ticket to the temporary 24-hour queue.</p><form id="updateReportForm" data-report-id="${escapeHtml(report.id)}"><div class="form-grid"><div class="form-field"><label for="updateStatus">New status</label><select id="updateStatus" name="status">${STATUSES.map(status => `<option ${report.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div><div class="form-field"><label for="updateDepartment">Assigned unit</label><select id="updateDepartment" name="department">${DEPARTMENTS.map(department => `<option ${report.department === department ? 'selected' : ''}>${department}</option>`).join('')}</select></div><div class="form-field full"><label for="updateNote">Internal note <span class="optional-label">Optional</span></label><textarea id="updateNote" name="note" maxlength="500" placeholder="Add an internal note for the authority record."></textarea></div></div><div class="form-bottom"><small>Saved records stay in the demo history. Public users can see ticket ID and status only.</small><button class="btn btn-dark" type="submit" id="saveUpdateButton">Save status</button></div></form></div>`;
+    host.innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-head"><div><div class="eyebrow">REPORT DETAIL · ${escapeHtml(report.id)}</div><h2 id="detailTitle">Report overview</h2><p>Review the submission, update its status, and follow the ticket history.</p></div><button class="close-modal" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="detail-hero">${categoryIcon(report.category)}<div><h3>${escapeHtml(report.title)}</h3><small>Submitted ${formatDate(report.createdAt, { hour: 'numeric', minute: '2-digit' })} · ${escapeHtml(report.reporter || 'Community member')}</small></div></div><div class="detail-tags">${statusPill(report.status)}<span class="priority ${escapeHtml(report.priority || 'Normal')}">${escapeHtml(report.priority || 'Normal')} priority</span></div>${authorityEditor}<p class="detail-description">${escapeHtml(report.description)}</p>${imageHtml}<div class="detail-grid"><div class="detail-field"><small>Submitted by</small><strong>${escapeHtml(report.reporter || 'Not provided')}</strong></div><div class="detail-field"><small>Contact number · authority only</small><strong>${report.phone ? `<a href="tel:${escapeHtml(report.phone)}">${escapeHtml(report.phone)}</a>` : (report.phoneProtected ? 'Unavailable — check the server encryption key' : 'Not provided')}</strong></div><div class="detail-field"><small>Category</small><strong>${escapeHtml(report.category)}</strong></div><div class="detail-field"><small>Barangay</small><strong>${escapeHtml(report.barangay || 'Not specified')}</strong></div><div class="detail-field"><small>Location / landmark</small><strong>${escapeHtml(report.address || 'No landmark provided')}</strong></div><div class="detail-field"><small>Assigned unit</small><strong>${escapeHtml(report.department || 'Unassigned')}</strong></div><div class="detail-field"><small>Coordinates</small><strong>${hasCoordinates(report) ? `${escapeHtml(report.lat)}, ${escapeHtml(report.lng)}` : 'Not provided'}</strong></div><div class="detail-field"><small>Last updated</small><strong>${formatDate(report.updatedAt, { hour: 'numeric', minute: '2-digit' })}</strong></div></div>${mapSection}<div class="timeline"><h4>Activity timeline</h4>${timeline.length ? timeline.map(item => `<div class="timeline-item"><div class="timeline-dot"></div><div><strong>${escapeHtml(item.status)}</strong><p>${escapeHtml(item.note || 'Status update recorded.')}</p><time>${formatDate(item.at, { hour: 'numeric', minute: '2-digit' })}</time></div></div>`).join('') : `<div class="empty-state">No activity recorded.</div>`}</div></div></section></div>`;
     if (window.L && hasCoordinates(report)) initDetailMap(report);
     else if (!hasCoordinates(report)) $('#detailMapFallback')?.classList.add('hidden');
+    else scheduleMapLibrary();
   }
   async function openReportDetail(id) {
     if (!id || !state.authenticated) return;
-    const cached = state.reports.find(item => item.id === id);
-    if (cached) {
-      state.detailRequestToken += 1;
-      state.openingReportId = null;
-      closeDetailMapOnly();
-      renderReportDetail(cached);
-      return;
-    }
     if (state.openingReportId === id) return;
     const token = ++state.detailRequestToken;
     state.openingReportId = id;
@@ -308,25 +360,48 @@
   }
   async function updateReport(event) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const id = form.dataset.reportId;
-    const button = $('#saveUpdateButton');
-    const nextStatus = $('#updateStatus').value;
-    if (nextStatus === 'Resolved' && state.currentDetail?.status !== 'Resolved') {
-      const confirmed = window.confirm('Mark this ticket as Resolved in the Pilar360 demo? The reporter will see the updated status. This does not confirm official barangay repair or action.');
-      if (!confirmed) return;
+    // This submit handler is delegated from document, so event.target is the form.
+    const form = event.target;
+    const id = form?.dataset?.reportId;
+    const button = form.querySelector('#saveUpdateButton');
+    const statusField = form.querySelector('#updateStatus');
+    const departmentField = form.querySelector('#updateDepartment');
+    const noteField = form.querySelector('#updateNote');
+    if (!id || !statusField || !departmentField || !button) {
+      showToast('Status form is incomplete.', 'Close this detail and open the report again.', 'error');
+      return;
     }
-    button.disabled = true; button.textContent = 'Saving…';
+    const nextStatus = statusField.value;
+    const previousLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Saving…';
     try {
-      const result = await api(`/api/reports/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus, department: $('#updateDepartment').value, note: $('#updateNote').value.trim() }) });
-      $('#modalHost').innerHTML = '';
-      await loadData();
-      const smsDetail = result.sms === 'queued' ? 'SMS notification queued.' : (result.sms === 'not_configured' ? 'Saved, but SMS is not configured on this server.' : '');
-      showToast('Status updated.', `${id} was updated in the demo. ${smsDetail}`);
-      openReportDetail(id);
+      const result = await api(`/api/reports/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus, department: departmentField.value, note: noteField?.value.trim() || '' })
+      });
+      if (!result.report || result.report.id !== id || result.report.status !== nextStatus) {
+        throw new Error('The server response did not confirm the requested status. Please reload and check the ticket.');
+      }
+      if (result.report.status === 'Approved') state.approvedQueueIds.add(id);
+      else state.approvedQueueIds.delete(id);
+      const index = state.reports.findIndex(item => item.id === id);
+      if (index >= 0) state.reports[index] = { ...state.reports[index], status: result.report.status, department: result.report.department, updatedAt: result.report.updatedAt, approvedAt: result.report.approvedAt, approvalExpiresAt: result.report.approvalExpiresAt };
+      // Refresh aggregate counts separately; a stats refresh must not undo a successful save.
+      try { state.stats = await api('/api/stats'); } catch (statsError) { console.warn('Stats refresh failed after a successful status update:', statsError); }
+      $('#navApprovedCount').textContent = String(state.reports.filter(isInApprovalQueue).length);
+      if (['reports', 'approvals'].includes(state.page)) renderPage();
+      renderReportDetail(result.report);
+      const smsDetail = result.sms === 'pending' ? 'SMS request is processing separately and does not delay saving.'
+        : result.sms === 'not_configured' ? 'SMS is not configured on this server.'
+        : result.sms === 'failed' ? 'The report was saved, but the SMS provider did not accept the message.'
+        : result.sms === 'not_requested' ? 'No SMS was requested for this ticket.'
+        : 'Status notification updated.';
+      showToast('Status saved successfully.', `${id} is now ${result.report.status}. ${smsDetail}`);
     } catch (error) {
       showToast('Could not update status.', error.message, 'error');
-      button.disabled = false; button.textContent = 'Save status update';
+      button.disabled = false;
+      button.textContent = previousLabel || 'Save status';
     }
   }
   function closeModal() {
@@ -344,7 +419,7 @@
   }
   function exportData() { window.location.href = '/api/export'; }
   function setPage(page) {
-    if (!['dashboard', 'reports', 'map', 'insights', 'settings'].includes(page)) return;
+    if (!['dashboard', 'reports', 'approvals', 'map', 'insights', 'settings'].includes(page)) return;
     state.page = page;
     $('#sidebar').classList.remove('open'); $('#mobileScrim').classList.remove('show');
     renderPage();
@@ -358,6 +433,10 @@
     if (count) count.textContent = `Showing ${rows.length} of ${state.reports.length} reports · Prototype records only`;
     const summary = $('.inbox-summary strong');
     if (summary) summary.textContent = `${rows.length} report${rows.length === 1 ? '' : 's'}`;
+    const summaryHint = $('.inbox-summary span');
+    if (summaryHint) summaryHint.textContent = state.statusFilter === 'Approved Queue'
+      ? 'Approved tickets leave this quick-access queue after 24 hours; their ticket history remains saved.'
+      : 'Tap “View report details” to open a submission.';
   }
 
   function showAdminLock(message = '') {
@@ -402,7 +481,7 @@
   async function logoutAdmin() {
     try {
       await api('/api/admin/logout', { method: 'POST', body: JSON.stringify({}) });
-      state.authenticated = false; state.reports = []; state.stats = null; state.currentDetail = null; destroyMaps();
+      state.authenticated = false; state.reports = []; state.stats = null; state.currentDetail = null; state.approvedQueueIds.clear(); destroyMaps();
       window.location.replace('/report?signedOut=1');
     } catch (error) {
       showToast('Could not end the authority session.', error.message + ' Please try signing out again.', 'error');
@@ -430,6 +509,7 @@
     if (action === 'cancel-logout') { closeModal(); return; }
     if (action === 'close-modal') { closeModal(); return; }
     if (action === 'clear-filters') { state.search = ''; state.statusFilter = 'All'; state.categoryFilter = 'All'; renderReports(); return; }
+    if (target.closest('[data-filter-approved-queue]')) { state.search = ''; state.statusFilter = 'Approved Queue'; state.categoryFilter = 'All'; renderReports(); return; }
     if (action === 'export') { exportData(); return; }
     if (action === 'reset-demo') { resetDemo(); return; }
     if (target.classList.contains('modal-backdrop')) closeModal();
@@ -440,7 +520,7 @@
   });
   document.addEventListener('submit', event => {
     if (event.target.id === 'adminLoginForm') loginAdmin(event);
-    if (event.target.id === 'updateReportForm') updateReport(event);
+    if (event.target.id === 'updateReportForm') void updateReport(event);
   });
   document.addEventListener('change', event => {
     if (event.target.id === 'statusFilter') { state.statusFilter = event.target.value; applyReportFilters(); }
@@ -458,5 +538,14 @@
   window.addEventListener('resize', () => state.mapInstances.forEach(map => { try { map.invalidateSize(true); } catch {} }));
 
   startAdmin();
-  loadMapLibrary();
+  window.setInterval(() => {
+    if (!state.authenticated) return;
+    state.approvedQueueIds = new Set([...state.approvedQueueIds].filter(id => {
+      const report = state.reports.find(item => item.id === id);
+      return report && isInApprovalQueue(report);
+    }));
+    $('#navApprovedCount').textContent = String(state.reports.filter(isInApprovalQueue).length);
+    if (state.page === 'approvals') renderApprovals();
+    else if (state.page === 'reports' && state.statusFilter === 'Approved Queue') renderReports();
+  }, 60000);
 })();

@@ -1,4 +1,4 @@
-# Pilar360 API — version 2.3 demo
+# Pilar360 API — version 2.5 demo
 
 All routes are served by the same Node.js server. The public portal offers report submission, a limited ticket directory and status-only lookup. Full report records are available only after authority sign-in.
 
@@ -41,7 +41,7 @@ GET /api/public/tickets
 GET /api/public/tickets?includeResolved=1
 ```
 
-The default response lists only active resident-submitted tickets. The optional query includes resolved and closed tickets. Each public entry contains only the ticket ID, category, status, created date and updated date. It never returns the report title, description, reporter name, phone number, landmark, photo or coordinates.
+The default response lists active resident-submitted tickets and sample ticket IDs that have been approved at least once. Once a sample ticket is approved, its ID remains in the public status directory as its status changes. The optional query includes resolved and closed tickets. Each public entry contains only the ticket ID, category, status, created date and updated date. It never returns the report title, description, reporter name, phone number, landmark, photo or coordinates.
 
 ### Track a report
 
@@ -87,11 +87,11 @@ Content-Type: application/json
 }
 ```
 
-Valid statuses: `Submitted`, `Under Review`, `Assigned`, `In Progress`, `Resolved`, `Closed`.
+Valid statuses: `Submitted`, `Under Review`, `Approved`, `Assigned`, `In Progress`, `Resolved`, `Closed`. Saving `Approved` starts a 24-hour queue timer. The authority UI shows that temporary quick-access entry only during the current page session; refreshing or reopening the authority page clears the quick list, while the saved status and ticket history remain available.
 
 ## Optional SMS provider
 
-When a number is provided and the reporter explicitly opts in, the server may send a receipt message and a second message when the status changes to `Resolved`. This requires `PILAR360_PHONE_ENCRYPTION_KEY` and `SEMAPHORE_API_KEY` on the server. `SEMAPHORE_SENDERNAME` is optional if a default sender name is configured with the provider. A provider-accepted request does not guarantee that the handset receives the SMS. If SMS is not configured, the report is still saved and the reporter is asked to keep the ticket ID.
+When a number is provided and the reporter explicitly opts in, the server may send a receipt message and a status-update message whenever the authority changes the report status (for example, to `Approved`, `In Progress` or `Resolved`). This requires `PILAR360_PHONE_ENCRYPTION_KEY` and `SEMAPHORE_API_KEY` on the server. `SEMAPHORE_SENDERNAME` is optional if a default sender name is configured with the provider. A provider-accepted request does not guarantee that the handset receives the SMS. If SMS is not configured, the report is still saved and the reporter is asked to keep the ticket ID.
 
 ## Contact developer
 
@@ -112,3 +112,4 @@ The Contact Developer form uses a `mailto:` link to prepare an email addressed t
 - `GET /` — project introduction page.
 - `GET /report` — public reporting and tracking portal.
 - `GET /admin` — authority sign-in and workspace.
+- `GET /contact` — standalone Contact Developer page.

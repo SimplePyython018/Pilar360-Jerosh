@@ -9,5 +9,142 @@
 /* v2.3 public ticket directory and optional private contact */
 .sms-consent{grid-column:1/-1;margin:0;padding:11px 13px;background:#f7f9f5}.ticket-directory{margin-top:24px;padding:18px;border:1px solid var(--line);border-radius:12px;background:#fbfcfa}.ticket-directory-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}.ticket-directory-head h3{margin:0 0 6px;color:var(--navy);font-size:15px}.ticket-directory-head p{margin:0;max-width:560px;color:#86939b;font-size:10px;line-height:1.6}.include-resolved{display:flex;align-items:center;gap:7px;color:#60717c;font-size:10px;white-space:nowrap}.include-resolved input{accent-color:#779f40}.public-ticket-list{display:grid;gap:8px}.public-ticket-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:12px 13px;border:1px solid #e5ebeb;border-radius:9px;background:white}.public-ticket-main{display:grid;gap:5px;min-width:0}.public-ticket-main strong{font-size:11px;color:#2b4050;letter-spacing:.3px}.public-ticket-main span{font-size:10px;color:#82909a;overflow-wrap:anywhere}.public-ticket-side{display:grid;justify-items:end;gap:4px}.ticket-list-status{font-size:10px;font-weight:800;color:#597b35}.public-ticket-side small{font-size:9px;color:#9aa5ac}.refresh-ticket-list{margin-top:10px}.sms-result-note{padding:8px 10px;background:#f0f5e9;border-radius:7px;color:#617b48!important}.track-card h3{font-size:16px}.track-card .timeline-item{display:flex;flex-direction:column;gap:2px}.track-card .timeline-item time{margin-top:3px}@media(max-width:650px){.ticket-directory{padding:14px}.ticket-directory-head{flex-direction:column}.public-ticket-row{grid-template-columns:1fr auto;gap:9px}.public-ticket-row .copy-button{grid-column:1/-1;width:100%}.public-ticket-side{align-items:start;justify-items:start}.include-resolved{white-space:normal}}
 
-/* Contact developer panel */
-.contact-developer{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:28px;margin:28px 0;padding:24px;border:1px solid var(--line);border-radius:14px;background:#fff}.contact-developer-copy h2{margin:7px 0 9px;color:var(--navy);font-size:22px}.contact-developer-copy p{max-width:410px;color:#7d8b94;font-size:12px;line-height:1.75}.developer-contact-line{margin-top:19px;color:#536876;font-size:12px}.developer-email{display:inline-block;margin-top:5px;color:#527a37;font-size:13px;font-weight:800;text-decoration:none}.developer-email:hover{text-decoration:underline}.developer-contact-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.developer-contact-form .field.full{grid-column:1/-1}.developer-contact-form .field{display:grid;gap:5px}.developer-contact-form textarea{resize:vertical}.developer-contact-form .button{justify-self:start}.contact-note{grid-column:1/-1;color:#929da4;font-size:10px;line-height:1.55}@media(max-width:720px){.contact-developer{grid-template-columns:1fr;padding:18px}.developer-contact-form{grid-template-columns:1fr}.developer-contact-form .field.full{grid-column:auto}.contact-note{grid-column:auto}}
+/* v2.5 responsive portal refresh: comfortable desktop workspace + app-like mobile flow */
+:root{--bg:#f1f5f5;--line:#e2e9e9;--navy:#102235;--green:#658e36;--lime:#c8f17d}
+body{background:radial-gradient(ellipse at 8% 0%,#e8f0e5 0,transparent 34%),#f3f6f6;color:#273b49}
+.site-header{position:sticky;top:0;z-index:60;height:70px;box-shadow:0 5px 22px #0d25310a}
+.brand-mark{box-shadow:0 5px 14px #c8f17d28}
+.container{max-width:1160px}
+.hero{padding-top:52px;padding-bottom:34px;gap:42px}
+.hero-copy>p{max-width:670px}
+.hero-card{border:1px solid #ffffff14;box-shadow:0 20px 48px #10203318}
+.portal-tabs{position:relative;z-index:10;gap:7px;padding:0 0 0 3px;border-bottom:1px solid #dfe7e7}
+.portal-tab{padding:15px 20px;border-radius:11px 11px 0 0;transition:background .16s,color .16s,border-color .16s}
+.portal-tab.active{background:#fff;border-bottom-color:#85b34c;color:#263b49}
+.portal-panel{border:1px solid #e3eaea;border-radius:0 15px 15px 15px;box-shadow:0 15px 42px #152c3c0a;padding:32px}
+.section-heading{align-items:center;padding-bottom:17px;border-bottom:1px solid #edf1f1}
+.section-heading h2{font-size:27px}
+.step-number{padding:8px 10px;border-radius:8px;background:#f3f6f4;color:#7f8e94}
+.form-grid{gap:19px 22px}
+.field input,.field select,.field textarea{min-height:45px;border-radius:10px;padding:12px 14px;background:#fcfdfd}
+.field textarea{min-height:118px;resize:vertical;line-height:1.65}
+.field>span{font-size:11px;letter-spacing:.08px}
+.field small{max-width:850px}
+.optional{font-size:10px;color:#7e8c93;font-weight:800;letter-spacing:.2px}
+.sms-consent{border:1px solid #e8eee3;border-radius:10px;background:#f8faf5}
+.consent{border:1px solid #edf1e9}
+.form-actions{padding-top:18px;border-top:1px solid #edf1f1}
+.form-actions .button{min-width:200px;min-height:48px;padding:13px 19px}
+.button-primary{background:#183148;box-shadow:0 7px 17px #142c4117}
+.button-primary:hover{background:#28465f;transform:translateY(-1px)}
+.result-box{padding:20px;border-color:#d7e7c9;box-shadow:0 7px 22px #527a2410}
+.report-id{font-size:22px;letter-spacing:1px}
+.ticket-directory{background:#f8faf9;border-color:#e7eeee;border-radius:13px}
+.public-ticket-row{border-radius:10px;transition:border-color .15s,box-shadow .15s}
+.public-ticket-row:hover{border-color:#c5d8ae;box-shadow:0 5px 15px #243d4c0a}
+.contact-developer{margin:18px 0 26px;padding:25px 28px;border-color:#e3eaea;border-radius:15px;box-shadow:0 12px 32px #112c3b08}
+.contact-developer-copy h2{font-size:23px}
+.developer-contact-form input,.developer-contact-form select,.developer-contact-form textarea{border-radius:9px}
+.how-it-works>div{box-shadow:0 7px 20px #142f3f06}
+.prototype-notice{border-radius:12px}
+.toast-host{bottom:18px}
+@media(min-width:1100px){.portal-panel{padding:36px 38px}.field.full>small{max-width:900px}.report-map-wrap{height:265px}}
+@media(max-width:760px){
+  .hero{padding:34px 0 22px;gap:16px}
+  .hero-card{padding:17px 18px;border-radius:14px}
+  .hero-card-icon{width:36px;height:36px;margin-bottom:10px}
+  .hero-card p{margin:6px 0;font-size:11px}
+  .hero-points{gap:9px 13px}
+  .portal-panel{border-radius:13px;padding:20px 17px}
+  .section-heading{gap:10px;margin-bottom:19px}
+  .section-heading h2{font-size:22px}
+  .section-heading p{font-size:11px;line-height:1.55}
+  .form-grid{grid-template-columns:1fr;gap:15px}
+  .field.full{grid-column:auto}
+  .form-actions{align-items:stretch}
+  .form-actions p{max-width:none}
+  .form-actions .button{width:100%}
+  .contact-developer{gap:17px;margin:16px 0 22px;padding:19px}
+}
+@media(max-width:560px){
+  body{padding-bottom:92px;background:#f3f6f6}
+  .site-header{height:60px;padding:0 13px}
+  .brand{gap:8px}
+  .brand-mark{width:34px;height:34px;border-radius:10px;font-size:11px}
+  .brand strong{font-size:13px;letter-spacing:.8px}
+  .brand small{font-size:7px;letter-spacing:1.2px}
+  .authority-link{font-size:9px;padding:8px 10px;border-radius:8px}
+  .container{width:calc(100% - 22px)}
+  .hero{padding:27px 0 18px;gap:13px}
+  .hero h1{font-size:34px;letter-spacing:-1.5px;margin:13px 0 10px}
+  .hero-copy>p{font-size:11px;line-height:1.65}
+  .hero-points{font-size:9px;margin-top:14px}
+  .hero-card{display:grid;grid-template-columns:39px 1fr;column-gap:11px;align-items:center;padding:13px;border-radius:12px}
+  .hero-card-icon{grid-row:span 2;width:36px;height:36px;margin:0}
+  .hero-card strong{font-size:12px}
+  .hero-card p{grid-column:2;font-size:9px;line-height:1.45;margin:3px 0}
+  .demo-label{grid-column:2;margin:4px 0 0;font-size:7px}
+  .portal-tabs{position:fixed;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);width:calc(100% - 20px);max-width:440px;padding:6px;gap:5px;border:1px solid #30485b;border-radius:16px;background:#12283b;box-shadow:0 12px 34px #06162550;z-index:100}
+  .portal-tab{flex:1;min-height:44px;padding:10px 7px;border:0;border-radius:11px;color:#d2dde4;font-size:10px;background:transparent}
+  .portal-tab.active{background:var(--lime);color:#1d3427;box-shadow:0 3px 9px #07162530}
+  .portal-panel{padding:18px 13px;border-radius:13px;border:1px solid #e2e9e9;box-shadow:0 8px 25px #142e3c08}
+  .section-heading{align-items:flex-start;padding-bottom:13px;margin-bottom:16px}
+  .section-heading h2{font-size:20px;margin:5px 0}
+  .section-heading p{font-size:10px;max-width:260px}
+  .step-number{font-size:8px;padding:6px 7px;white-space:nowrap}
+  .field{gap:6px}
+  .field>span{font-size:10px}
+  .field input,.field select,.field textarea{min-height:46px;font-size:13px;padding:12px;border-radius:9px}
+  .field textarea{min-height:112px}
+  .field small{font-size:9px;line-height:1.55}
+  .optional{font-size:9px}
+  .consent{font-size:9px;padding:11px;line-height:1.55;margin-top:15px}
+  .sms-consent{padding:11px}
+  .form-actions{margin-top:16px;gap:10px}
+  .form-actions p{font-size:9px;line-height:1.5}
+  .form-actions .button{min-height:47px}
+  .result-box{padding:15px}
+  .result-box p{font-size:10px}
+  .report-id{font-size:19px}
+  .ticket-directory{padding:12px;margin-top:17px}
+  .ticket-directory-head h3{font-size:13px}
+  .ticket-directory-head p{font-size:9px}
+  .public-ticket-row{grid-template-columns:1fr auto;padding:10px;gap:7px}
+  .public-ticket-main strong{font-size:10px}
+  .public-ticket-main span{font-size:9px}
+  .public-ticket-side small{font-size:8px}
+  .public-ticket-row .copy-button{grid-column:1/-1;width:100%;min-height:36px}
+  .track-form{gap:9px}
+  .track-card{padding:13px}
+  .track-card h3{font-size:15px}
+  .track-meta{gap:7px;font-size:9px}
+  .how-it-works{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:17px 0}
+  .how-it-works>div{padding:11px 9px;border-radius:10px}
+  .how-it-works span{width:22px;height:22px;margin-bottom:8px}
+  .how-it-works strong{font-size:10px}
+  .how-it-works p{font-size:8px;line-height:1.45}
+  .contact-developer{padding:15px;margin:14px 0 18px;border-radius:12px;gap:13px}
+  .contact-developer-copy h2{font-size:19px}
+  .contact-developer-copy p{font-size:10px;line-height:1.6;margin:7px 0}
+  .developer-contact-line{margin-top:12px;font-size:10px}
+  .developer-email{font-size:12px}
+  .developer-contact-form{gap:10px}
+  .developer-contact-form .field input,.developer-contact-form .field select,.developer-contact-form .field textarea{font-size:13px}
+  .developer-contact-form .button{width:100%}
+  .contact-note{font-size:9px}
+  .prototype-notice{margin:18px 0 20px;padding:12px}
+  .prototype-notice p{font-size:9px}
+  .site-footer{padding:14px 13px;font-size:9px}
+  .toast-host{left:10px;right:10px;bottom:82px;width:auto}
+  .toast{font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){.portal-tab,.public-ticket-row,.button-primary{transition:none}}
+
+/* v2.5.0 portal header and mobile width refinements */
+html,body{width:100%;max-width:100%;overflow-x:hidden}
+.public-header-actions{display:flex;align-items:center;gap:9px}
+.contact-link{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border:1px solid #41556a;border-radius:9px;color:#d4e0e8;font-size:11px;font-weight:700}
+.contact-link:hover{border-color:var(--lime);color:var(--lime)}
+@media(max-width:560px){.site-header{padding:0 11px}.public-header-actions{gap:5px}.contact-link,.authority-link{padding:8px 8px;font-size:9px}.brand{gap:7px}.brand-mark{width:32px;height:32px}}
+
+.ticket-list-status.status-approved,.status-chip.status-approved{background:#eef7e3;color:#4e7e2c;border:1px solid #d8e9c7;padding:5px 8px;border-radius:999px;font-weight:900}.ticket-list-status.status-approved{display:inline-flex;justify-content:center}

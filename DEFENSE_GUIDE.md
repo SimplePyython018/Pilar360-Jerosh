@@ -51,7 +51,7 @@ Pilar360 is not an official LGU system. It does not automatically send reports t
 “Our project is Pilar360. I am Jerosh Nevado, a Grade 12 ICT student, and I developed this as a demonstration prototype for my project proposal. It focuses on Barangay Marifosque. The public side allows a resident to submit a concern, add a location, receive a report ID, and check its status. The authority side is password-protected. It allows the demo authority user to review reports, see the reporter and location, view map pins, and update the status. This is only a student prototype and is not connected to the barangay or municipal government.”
 
 
-## Easy demonstration script (v2.3)
+## Easy demonstration script (v2.5)
 
 1. Open the project introduction page and introduce yourself as Jerosh Nevado, Grade 12 ICT.
 2. Select **Explore Pilar360** to open the public report portal.
@@ -59,7 +59,7 @@ Pilar360 is not an official LGU system. It does not automatically send reports t
 4. Copy the generated demo report ID and use **Check report status**.
 5. Open **Authority access**, enter the password stored in Render Environment Variables, then open **Issue reports**.
 6. Tap **View report details**. Explain the reporter name, issue information, photo placeholder/photo, location map or missing-location notice, timeline, and status controls.
-7. Change the sample status to **Resolved** and save. Confirm the prompt. Reopen the public portal and search the same ID to show the new status. The status means the item was marked resolved in the prototype only.
+7. Change the sample status to **Approved** and save. Confirm the prompt. Show that the ticket ID appears in the temporary Approved queue. The quick list clears after 24 hours or when the authority page is refreshed/reopened, but the saved ticket status remains in public tracking. You can also change it to **In Progress** or **Resolved** to demonstrate further updates.
 8. Select **Sign out**. Choose **Yes, sign out** to return to the public report portal, or **No, stay here** to remain in authority.
 
 Keep the explanation simple: “The resident submits a concern and receives a demo report ID. The authority user can view the submitted details and update the demo status. The resident can use the report ID to check that status.”
@@ -67,12 +67,12 @@ Keep the explanation simple: “The resident submits a concern and receives a de
 Reminder: use fictional sample data for a classroom demo. This prototype does not send reports to barangay officials or guarantee a real-world response.
 
 
-## New features in v2.3
+## New features in v2.5
 
 - A public ticket list helps a resident find an active ticket ID if they forgot to save it. The list only shows the ticket ID, category, status and dates. Resolved/closed tickets can also be included with the filter.
 - Public ticket lookup only shows the status history and dates. It does not show the issue description, reporter name, phone number, photo, landmark or exact coordinates.
-- The reporter name and contact number are optional. A phone number can be saved only after the server encryption key is configured. It is encrypted in the data file and shown only in the authority workspace.
-- SMS is optional and only works when an SMS provider account, server API key, sender setup and credits are configured. The website still asks the user to keep the ticket ID.
+- The reporter name and contact number are optional. The Approved queue is a temporary current-session list, while the report status and ticket history remain saved. A phone number can be saved only after the server encryption key is configured. It is encrypted in the data file and shown only in the authority workspace.
+- SMS is optional and sends a receipt plus status-change updates when an SMS provider account, server API key, sender setup and credits are configured. The website still asks the user to keep the ticket ID.
 - The Contact Developer form opens the visitor's email app with a message prepared for the developer. The visitor must press Send; the prototype does not automatically send or store the message.
 
 **Important:** A ticket marked Resolved only means it was marked as resolved inside this student prototype. It does not prove that the barangay has completed actual work.

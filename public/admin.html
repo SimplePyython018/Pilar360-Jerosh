@@ -7,8 +7,8 @@
   <meta name="description" content="Pilar 360 — a modern community issue reporting prototype for Pilar, Sorsogon. Built by Jerosh.">
   <title>Pilar360 — Authority Workspace</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/admin-styles.css">
-  <script defer src="/admin-app.js"></script>
+  <link rel="stylesheet" href="/admin-styles.css?v=2.5.0">
+  <script defer src="/admin-app.js?v=2.5.0"></script>
 </head>
 <body>
   <div class="admin-lock" id="adminLock">
@@ -38,6 +38,7 @@
       <nav class="main-nav" aria-label="Main navigation">
         <button class="nav-item active" data-page="dashboard"><span class="nav-icon">◫</span><span>Overview</span></button>
         <button class="nav-item" data-page="reports"><span class="nav-icon">▤</span><span>Issue reports</span><span class="nav-count" id="navReportCount">—</span></button>
+        <button class="nav-item" data-page="approvals"><span class="nav-icon">✓</span><span>Approved queue</span><span class="nav-count" id="navApprovedCount">0</span></button>
         <button class="nav-item" data-page="map"><span class="nav-icon">⌖</span><span>Community map</span></button>
         <button class="nav-item" data-page="insights"><span class="nav-icon">▥</span><span>Insights</span></button>
         <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span>Workspace & settings</span></button>
@@ -45,7 +46,7 @@
       <div class="sidebar-bottom">
         <div class="sidebar-note"><span class="pulse-dot"></span><div><strong>Prototype environment</strong><small>Local demo data only</small></div></div>
         <div class="profile-mini"><div class="avatar">J</div><div class="profile-label"><strong>Jerosh</strong><small>Builder workspace</small></div><span class="profile-dots">•••</span></div>
-        <div class="side-credit">DESIGNED & BUILT BY <strong>JEROSH</strong><br><span>Independent prototype · v2.3</span></div>
+        <div class="side-credit">DESIGNED & BUILT BY <strong>JEROSH</strong><br><span>Independent prototype · v2.5</span></div>
       </div>
     </aside>
 
@@ -69,6 +70,12 @@
       <footer class="app-footer"><span>© <span id="yearNow"></span> Pilar 360</span><span>Built by <strong>Jerosh</strong> · Independent demo, not an official LGU service</span><a href="https://www.pilarsor.gov.ph/" target="_blank" rel="noopener noreferrer">Pilar municipal website ↗</a></footer>
     </main>
   </div>
+  <nav class="mobile-bottom-nav" aria-label="Quick navigation">
+    <button type="button" data-page="dashboard" aria-label="Overview"><span>⌂</span><small>Home</small></button>
+    <button type="button" data-page="reports" aria-label="Issue reports"><span>▤</span><small>Reports</small></button>
+    <button type="button" data-page="approvals" aria-label="Approved queue"><span>✓</span><small>Approved</small></button>
+    <button type="button" data-page="map" aria-label="Community map"><span>⌖</span><small>Map</small></button>
+  </nav>
   <div id="modalHost"></div>
   <div id="toastHost" class="toast-host" role="status" aria-live="polite"></div>
 </body>

@@ -1,6 +1,6 @@
 {
   "name": "pilar-360-jerosh",
-  "version": "2.3.0",
+  "version": "2.5.0",
   "private": true,
   "description": "Pilar360 \u2014 a responsive community issue reporting and tracking prototype for Barangay Marifosque Pilar Sorsogon.",
   "main": "server.js",

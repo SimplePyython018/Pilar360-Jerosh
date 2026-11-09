@@ -26,6 +26,7 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.equal(privateList.status, 401, 'report list must be authority-only');
   const privateStats = await call('/api/stats');
   assert.equal(privateStats.status, 401, 'statistics must be authority-only');
+  assert.equal((await call('/api/workspace')).status, 401, 'combined workspace API must be protected');
 
   const invalid = await call('/api/reports', json('POST', { title: 'bad', category: 'Unknown', description: 'too short', barangay: '' }));
   assert.equal(invalid.status, 422);
@@ -60,6 +61,15 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.equal(login.status, 200);
   const cookie = login.headers.get('set-cookie').split(';')[0];
 
+  const workspaceResponse = await call('/api/workspace', { headers: { cookie } });
+  assert.equal(workspaceResponse.status, 200);
+  const workspace = await workspaceResponse.json();
+  assert.ok(Array.isArray(workspace.reports) && workspace.stats);
+  const compactEntry = workspace.reports.find(r => r.id === created.id);
+  assert.ok(compactEntry);
+  assert.equal('photoData' in compactEntry, false);
+  assert.equal('timeline' in compactEntry, false);
+  assert.equal('phone' in compactEntry, false);
   const authorizedList = await call('/api/reports', { headers: { cookie } });
   assert.equal(authorizedList.status, 200);
   const reports = (await authorizedList.json()).reports;
@@ -80,6 +90,22 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
 
   const trackedAgain = await call(`/api/track/${created.id}`);
   assert.equal((await trackedAgain.json()).report.status, 'In Progress');
+  // Approve a fictional seed ticket too: older versions hid all demo-source tickets from the public list.
+  const demoApproved = await call('/api/reports/PIL-2026-0011', json('PATCH', { status: 'Approved', department: 'Barangay Coordination' }, cookie));
+  assert.equal(demoApproved.status, 200);
+  const publicDemoApproval = await call('/api/public/tickets');
+  assert.ok((await publicDemoApproval.json()).tickets.some(ticket => ticket.id === 'PIL-2026-0011' && ticket.status === 'Approved'));
+  const demoProgress = await call('/api/reports/PIL-2026-0011', json('PATCH', { status: 'In Progress' }, cookie));
+  assert.equal(demoProgress.status, 200);
+  const publicDemoProgress = await call('/api/public/tickets');
+  assert.ok((await publicDemoProgress.json()).tickets.some(ticket => ticket.id === 'PIL-2026-0011' && ticket.status === 'In Progress'), 'once approved, a sample ticket stays publicly trackable through later statuses');
+
+  const approved = await call(`/api/reports/${created.id}`, json('PATCH', { status: 'Approved', department: 'Barangay Coordination' }, cookie));
+  assert.equal(approved.status, 200);
+  assert.equal((await approved.json()).report.status, 'Approved');
+  const publicApproved = await call('/api/public/tickets');
+  assert.ok((await publicApproved.json()).tickets.some(ticket => ticket.id === created.id && ticket.status === 'Approved'));
+  assert.equal((await call(`/api/track/${created.id}`)).status, 200);
   assert.equal((await call('/api/export')).status, 401);
   const exportResponse = await call('/api/export', { headers: { cookie } });
   assert.equal(exportResponse.status, 200);
@@ -98,15 +124,26 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.match(portal, /id=\"barangay\"/);
   assert.doesNotMatch(portal, /id=\"barangay\"[^>]*value=\"Marifosque\"/);
   assert.match(portal, /id=\"reportMap\"/);
+  assert.equal((await call('/contact')).status, 200);
+  assert.match(await (await call('/contact')).text(), /developerContactForm/);
   assert.equal((await call('/admin')).status, 200);
   assert.match(await (await call('/admin')).text(), /Authority sign in/);
   const adminJs = await (await call('/admin-app.js')).text();
   assert.match(adminJs, /Yes, sign out/);
   assert.match(adminJs, /function askLogout/);
   assert.match(adminJs, /function photoEvidence/);
-  assert.match(adminJs, /if \(cached\)/);
+  assert.ok(adminJs.includes("api('/api/workspace')"), 'dashboard should use one compact workspace request');
+  assert.match(adminJs, /const form = event\.target;/, 'delegated status submit handler must read the actual form, not document');
+  assert.doesNotMatch(adminJs.match(/async function updateReport\(event\)\s*\{[\s\S]*?\n  \}/)?.[0] || '', /event\.currentTarget/, 'update handler must not mistake document for the form');
+  assert.match(adminJs, /async function openReportDetail/);
   assert.match(adminJs, /View report details/);
   assert.match(adminJs, /window.location.replace\('\/report\?signedOut=1'\)/);
   assert.match(adminJs, /function initDetailMap/);
-  assert.match(await (await call('/reporter.js')).text(), /signedOut/);
+  const dashboardSource = adminJs.match(/function renderDashboard\(\)\s*\{[\s\S]*?\n  \}/)?.[0] || '';
+  assert.doesNotMatch(dashboardSource, /initMap\(/, 'dashboard must not load a map library just to render the overview');
+  assert.match(dashboardSource, /overview-banner/);
+  const reporterJs = await (await call('/reporter.js')).text();
+  assert.match(reporterJs, /signedOut/);
+  assert.match(reporterJs, /result\.sms === 'pending'/, 'reporter must explain asynchronous SMS processing accurately');
+  assert.match(reporterJs, /loadPublicTickets\(\{ quiet: true \}\)/, 'background refresh should not flash a loading screen every 30 seconds');
 });

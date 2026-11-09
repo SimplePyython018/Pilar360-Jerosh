@@ -1,15 +1,17 @@
-# Pilar360 — architecture notes (version 2.3)
+# Pilar360 — architecture notes (version 2.5)
 
 ## System overview
 
 ```text
 Resident browser (phone / tablet / PC)
-  ├─ Public portal: submit report + track report ID
-  └─ Authority portal: sign-in + private report inbox + map + updates
+  ├─ Public portal: submit report + public ticket directory + track report ID
+  ├─ Contact page: separate developer feedback email draft
+  └─ Authority portal: sign-in + private report inbox + status updates
                  │ same-origin HTTPS/HTTP JSON API
                  ▼
             Node.js server
-  ├─ Public report creation and limited tracking
+  ├─ Public report creation, approved-ticket directory and limited tracking
+  ├─ Compact authenticated workspace API for dashboard loading
   ├─ Authority password sign-in and session cookie
   ├─ Access checks for report list/details/stats/export/update/reset
   └─ Input validation and JSON persistence
@@ -40,18 +42,19 @@ Optional map layer: Leaflet + OpenStreetMap tiles (internet required)
 - Uses Community Map to inspect valid coordinate pins.
 - Opens a report detail to record a new demo status and note.
 - Can export JSON or restore fictional seed data.
+- Can place an Approved ticket in a temporary 24-hour queue. Its ticket ID and current status remain publicly trackable after it leaves the authority quick-access queue.
 
 ## Data and access controls
 
 The Node.js server stores records in a JSON file for the small classroom prototype. The authority password is read from `PILAR360_ADMIN_PASSWORD`; it is never placed in frontend JavaScript. A successful login creates a random server-side session and an HTTP-only, SameSite=Strict cookie. The private report APIs verify that session on every request.
 
-The public ticket directory and tracking endpoint return only ticket ID, category, status and dates/status history. They exclude reporter identity, phone number, report title and description, exact latitude/longitude, photo, and landmark. Authority endpoints return the full record only after authentication. An optional phone number is encrypted in the JSON data file with AES-256-GCM and decrypted only for authority responses when the same server encryption key is configured.
+The public ticket directory and tracking endpoint return only ticket ID, category, status and dates/status history. A sample ticket becomes eligible for the public directory once it has been approved, and remains listed as its status advances. They exclude reporter identity, phone number, report title and description, exact latitude/longitude, photo, and landmark. Authority endpoints return the full record only after authentication. An optional phone number is encrypted in the JSON data file with AES-256-GCM and decrypted only for authority responses when the same server encryption key is configured.
 
 This is a demonstration-level control. Sessions are stored in server memory and are lost after restart. A production deployment needs individual staff accounts, secure password hashing and rotation, stronger session management, CSRF and abuse controls, audit logs, database/object storage, privacy and retention policies, monitoring, backups, and official LGU authorization.
 
 ## Map behavior
 
-The map plots only records with both valid latitude and longitude. It fits map bounds to the submitted points and recalculates its size after layout changes to support desktop, tablet, and phone views. Map tiles are external and require internet. If Leaflet or map tiles cannot load, the map panel shows a fallback message while the report list, location text, and coordinate links remain available.
+The map library loads only when the authority opens Community Map or a report detail containing coordinates; the dashboard overview does not wait for the map. The map plots only records with both valid latitude and longitude. It fits map bounds to the submitted points and recalculates its size after layout changes to support desktop, tablet, and phone views. Map tiles are external and require internet. If Leaflet or map tiles cannot load, the map panel shows a fallback message while the report list, location text, and coordinate links remain available.
 
 Coordinates are entered by the reporter or captured with browser location permission. They are not geocoded or independently checked. A reported pin should be treated as approximate unless verified.
 

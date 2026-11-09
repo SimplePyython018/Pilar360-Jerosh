@@ -138,9 +138,9 @@
     const body = { reporter: $('#reporter').value.trim(), phone: phoneInput.value.trim(), smsConsent: smsConsentInput.checked, title: $('#title').value.trim(), category: $('#category').value, barangay, address: $('#address').value.trim(), description: $('#description').value.trim(), priority: 'Normal', lat: latText || null, lng: lngText || null, photoData };
     try {
       const result = await api('/api/reports', { method: 'POST', body: JSON.stringify(body) });
-      const smsMessage = result.sms === 'queued'
-        ? 'The SMS provider accepted the notification request. Delivery is not guaranteed.'
-        : (body.phone && body.smsConsent ? (result.sms === 'not_configured' ? 'SMS notification is not enabled on this demo server. Please keep your ticket ID.' : 'The report was saved, but the SMS provider did not accept the request. Please keep your ticket ID.') : 'No SMS notification was requested.');
+      const smsMessage = result.sms === 'pending'
+        ? 'Your SMS notification is being processed separately. Delivery is not guaranteed, so please keep your ticket ID.'
+        : (body.phone && body.smsConsent ? (result.sms === 'not_configured' ? 'SMS notification is not enabled on this demo server. Please keep your ticket ID.' : result.sms === 'failed' ? 'The report was saved, but the SMS provider did not accept the request. Please keep your ticket ID.' : 'Your report is saved. Please keep your ticket ID.') : 'No SMS notification was requested.');
       $('#submitResult').innerHTML = `<strong>Report saved successfully in the demo.</strong><div class="report-id">${escapeHtml(result.report.id)}</div><p>Save this ID. You can use it in “Check report status”. This is not an official barangay report number.</p><p class="sms-result-note">${escapeHtml(smsMessage)}</p><button class="copy-button" type="button" id="copyReportId">Copy report ID</button> <button class="copy-button" type="button" id="trackThisReport">Check status now</button>`;
       $('#submitResult').classList.remove('hidden');
       $('#copyReportId').addEventListener('click', async () => { try { await navigator.clipboard.writeText(result.report.id); showToast('Report ID copied.'); } catch { showToast(`Your report ID is ${result.report.id}`); } });
@@ -159,7 +159,7 @@
     try {
       const result = await api(`/api/track/${encodeURIComponent(id)}`); const r = result.report;
       const timeline = (r.timeline || []).slice().sort((a,b) => new Date(a.at) - new Date(b.at));
-      $('#trackResult').innerHTML = `<article class="track-card"><div class="track-card-head"><div><div class="track-id">${escapeHtml(r.id)}</div><h3>Report status</h3></div><span class="status-chip">${escapeHtml(r.status)}</span></div><div class="track-meta"><span>${escapeHtml(r.category)}</span><span>Submitted ${prettyDate(r.createdAt)}</span><span>Updated ${prettyDate(r.updatedAt)}</span></div><h4 style="font-size:11px;color:#536876;margin:0 0 15px">Status history</h4><div class="timeline">${timeline.map(item => `<div class="timeline-item"><strong>${escapeHtml(item.status)}</strong><time>${prettyDate(item.at)}</time></div>`).join('') || '<p>No updates yet.</p>'}</div><p style="font-size:9px;color:#9aa5ac;margin:4px 0 0">This public view shows ticket status only. The full report and contact information are available only in the authority workspace. Status updates are part of this student demo and do not confirm official barangay action.</p></article>`;
+      $('#trackResult').innerHTML = `<article class="track-card"><div class="track-card-head"><div><div class="track-id">${escapeHtml(r.id)}</div><h3>Report status</h3></div><span class="status-chip ${r.status === 'Approved' ? 'status-approved' : ''}">${escapeHtml(r.status)}</span></div><div class="track-meta"><span>${escapeHtml(r.category)}</span><span>Submitted ${prettyDate(r.createdAt)}</span><span>Updated ${prettyDate(r.updatedAt)}</span></div><h4 style="font-size:11px;color:#536876;margin:0 0 15px">Status history</h4><div class="timeline">${timeline.map(item => `<div class="timeline-item"><strong>${escapeHtml(item.status)}</strong><time>${prettyDate(item.at)}</time></div>`).join('') || '<p>No updates yet.</p>'}</div><p style="font-size:9px;color:#9aa5ac;margin:4px 0 0">This public view shows ticket status only. The full report and contact information are available only in the authority workspace. Status updates are part of this student demo and do not confirm official barangay action.</p></article>`;
     } catch (error) { $('#trackResult').innerHTML = `<div class="empty-track"><strong>Report not found</strong><p>${escapeHtml(error.message)}</p></div>`; }
     finally { button.disabled = false; button.innerHTML = 'Find report <span>→</span>'; }
   });
@@ -169,22 +169,23 @@
       host.innerHTML = '<div class="empty-track"><strong>No tickets in this list</strong><p>There are no public demo tickets matching this filter right now.</p></div>';
       return;
     }
-    host.innerHTML = tickets.map(ticket => `<article class="public-ticket-row"><div class="public-ticket-main"><strong>${escapeHtml(ticket.id)}</strong><span>${escapeHtml(ticket.category)}</span></div><div class="public-ticket-side"><span class="ticket-list-status">${escapeHtml(ticket.status)}</span><small>Updated ${prettyDate(ticket.updatedAt)}</small></div><button type="button" class="copy-button" data-use-ticket="${escapeHtml(ticket.id)}">Use ticket ID</button></article>`).join('');
+    host.innerHTML = tickets.map(ticket => `<article class="public-ticket-row"><div class="public-ticket-main"><strong>${escapeHtml(ticket.id)}</strong><span>${escapeHtml(ticket.category)}</span></div><div class="public-ticket-side"><span class="ticket-list-status ${ticket.status === 'Approved' ? 'status-approved' : ''}" data-status="${escapeHtml(ticket.status)}">${escapeHtml(ticket.status)}</span><small>Updated ${prettyDate(ticket.updatedAt)}</small></div><button type="button" class="copy-button" data-use-ticket="${escapeHtml(ticket.id)}">Use ticket ID</button></article>`).join('');
   }
-  async function loadPublicTickets() {
+  async function loadPublicTickets({ quiet = false } = {}) {
     const host = $('#publicTicketList');
-    host.innerHTML = '<div class="empty-track">Loading ticket list…</div>';
+    if (!quiet) host.innerHTML = '<div class="empty-track">Loading ticket list…</div>';
     try {
       const includeResolved = $('#includeResolvedTickets').checked;
       const result = await api(`/api/public/tickets${includeResolved ? '?includeResolved=1' : ''}`);
       renderPublicTicketList(result.tickets || []);
     } catch (error) {
+      if (quiet) { console.warn('Background ticket refresh failed:', error); return; }
       host.innerHTML = `<div class="empty-track"><strong>Could not load ticket list</strong><p>${escapeHtml(error.message)}</p><button type="button" class="copy-button" id="retryTicketList">Try again</button></div>`;
-      $('#retryTicketList')?.addEventListener('click', loadPublicTickets);
+      $('#retryTicketList')?.addEventListener('click', () => loadPublicTickets());
     }
   }
-  $('#includeResolvedTickets').addEventListener('change', loadPublicTickets);
-  $('#refreshTicketList').addEventListener('click', loadPublicTickets);
+  $('#includeResolvedTickets').addEventListener('change', () => loadPublicTickets());
+  $('#refreshTicketList').addEventListener('click', () => loadPublicTickets());
   $('#publicTicketList').addEventListener('click', event => {
     const button = event.target.closest('[data-use-ticket]');
     if (!button) return;
@@ -192,32 +193,23 @@
     $('#trackForm').requestSubmit();
   });
 
-  $('#developerContactForm').addEventListener('submit', event => {
-    event.preventDefault();
-    const name = $('#developerName').value.trim();
-    const replyEmail = $('#developerReplyEmail').value.trim();
-    const type = $('#developerConcernType').value;
-    const message = $('#developerMessage').value.trim();
-    if (message.length < 8) return showToast('Please enter a little more detail about your concern.', true);
-    const subject = `Pilar360 - ${type}`;
-    const body = [
-      'Hello Jerosh,',
-      '',
-      'I would like to send a message about the Pilar360 student prototype.',
-      `Concern: ${type}`,
-      `Name: ${name || 'Not provided'}`,
-      `Reply email: ${replyEmail || 'Not provided'}`,
-      '',
-      'Message:',
-      message,
-      '',
-      `Page: /report`
-    ].join('\n');
-    window.location.href = `mailto:ahukyo@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    showToast('Your email app should open with the message prepared. Review it and press Send.');
-  });
   loadPublicTickets();
-  loadLocationMapLibrary();
+  // Load the map library only when the map is close to the viewport.
+  // This keeps the report portal usable quickly on slower mobile connections.
+  if ('IntersectionObserver' in window) {
+    const mapObserver = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        mapObserver.disconnect();
+        loadLocationMapLibrary();
+      }
+    }, { rootMargin: '260px 0px' });
+    const mapNode = $('#reportMap');
+    if (mapNode) mapObserver.observe(mapNode);
+  } else {
+    window.addEventListener('load', () => window.setTimeout(loadLocationMapLibrary, 1200), { once: true });
+  }
+  // Keep the public ID/status directory reasonably fresh while this page is open.
+  window.setInterval(() => { if (!document.hidden) loadPublicTickets({ quiet: true }); }, 15000);
   const params = new URLSearchParams(location.search);
   if (params.get('track')) { $('#trackId').value = params.get('track'); switchTab('track'); $('#trackForm').requestSubmit(); }
 })();

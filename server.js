@@ -22,7 +22,7 @@ const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || '0.0.0.0';
 const MAX_BODY_BYTES = 6 * 1024 * 1024;
 const CATEGORIES = ['Road & Sidewalk', 'Waste & Cleanliness', 'Drainage & Flooding', 'Streetlight', 'Water & Utilities', 'Public Safety', 'Parks & Public Spaces', 'Other'];
-const STATUSES = ['Submitted', 'Under Review', 'Assigned', 'In Progress', 'Resolved', 'Closed'];
+const STATUSES = ['Submitted', 'Under Review', 'Approved', 'Assigned', 'In Progress', 'Resolved', 'Closed'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Urgent'];
 const SESSION_COOKIE = 'pilar360_authority';
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
@@ -188,24 +188,30 @@ function createApp(options = {}) {
       return '';
     }
   }
-  function authorityViewReport(report) {
+    function authorityViewReport(report) {
     const { phoneEncrypted, phone: legacyPhone, ...visible } = report;
     return { ...visible, phone: decryptPhoneNumber(report), phoneProtected: Boolean(phoneEncrypted) };
+  }
+  function authorityListReport(report) {
+    // List/dashboard payloads do not need images, timelines, or contact numbers.
+    // Keep detail-only data on the authenticated single-ticket endpoint.
+    const { phoneEncrypted, phone: legacyPhone, photoData, timeline, ...visible } = report;
+    return visible;
   }
   function hasValidOrigin(req) {
     const origin = req.headers.origin;
     if (!origin) return true; // Non-browser clients may omit Origin; browser requests are checked.
     try { return new URL(origin).host === req.headers.host; } catch { return false; }
   }
-  async function sendSmsNotification(report, eventType) {
+  async function sendSmsNotification(report, eventType, statusValue = '') {
     const phone = report.phone || decryptPhoneNumber(report);
     if (!phone || report.smsConsent !== true) return 'not_requested';
-    const message = eventType === 'resolved'
-      ? `Pilar360 demo: Ticket ${report.id} is now marked RESOLVED in the student prototype. This does not confirm official barangay action.`
-      : `Pilar360 demo: Your report ${report.id} was saved. Keep this ticket ID to check its status. This is not an official barangay report.`;
+    const message = eventType === 'submitted'
+      ? `Pilar360 demo: Your report ${report.id} was saved with status SUBMITTED. Keep this ticket ID to check updates. This is not an official barangay report.`
+      : `Pilar360 demo: Ticket ${report.id} status updated to ${String(statusValue || report.status).toUpperCase()}. Check Pilar360 using this ticket ID. This does not confirm official barangay action.`;
     try {
       if (typeof smsSender === 'function') {
-        await smsSender({ number: phone, message, reportId: report.id, eventType });
+        await smsSender({ number: phone, message, reportId: report.id, eventType, status: statusValue || report.status });
         return 'queued';
       }
       if (!smsApiKey) return 'not_configured';
@@ -231,6 +237,19 @@ function createApp(options = {}) {
       return 'failed';
     }
   }
+  function queueSmsNotification(report, eventType, statusValue = '') {
+    const phone = report.phone || decryptPhoneNumber(report);
+    if (!phone || report.smsConsent !== true) return 'not_requested';
+    if (typeof smsSender !== 'function' && !smsApiKey) return 'not_configured';
+    // Do not make report/status saving wait for a third-party SMS API.
+    // The record is committed first; provider delivery continues in the background.
+    void sendSmsNotification(report, eventType, statusValue).then(result => {
+      console.info(`[Pilar360] SMS ${eventType} for ${report.id}: ${result}`);
+    }).catch(error => {
+      console.warn(`[Pilar360] SMS ${eventType} for ${report.id} failed:`, error.message);
+    });
+    return 'pending';
+  }
   function loginLimit(ip) {
     const entry = loginAttempts.get(ip) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
     if (entry.resetAt <= Date.now()) { entry.count = 0; entry.resetAt = Date.now() + 15 * 60 * 1000; }
@@ -249,7 +268,7 @@ function createApp(options = {}) {
     catch { return sendJson(res, 400, { error: 'Invalid URL path.' }); }
     try {
       if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) && !hasValidOrigin(req)) return sendJson(res, 403, { error: 'Request origin was not accepted.' });
-      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.3.0-demo', mode: 'prototype', now: new Date().toISOString() });
+      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.5.0-demo', mode: 'prototype', now: new Date().toISOString() });
 
       if (req.method === 'GET' && pathname === '/api/admin/session') return sendJson(res, 200, { authenticated: isAuthorized(req), configured: Boolean(adminPassword) });
       if (req.method === 'POST' && pathname === '/api/admin/login') {
@@ -318,12 +337,13 @@ function createApp(options = {}) {
         };
         reports.push(report);
         writeReports(reports);
-        const sms = await sendSmsNotification(report, 'submitted');
+        const sms = queueSmsNotification(report, 'submitted');
         return sendJson(res, 201, { report: { id: report.id, status: report.status }, sms, message: 'Demo report saved. Keep the report ID to check its status.' });
       }
       if (req.method === 'GET' && pathname === '/api/public/tickets') {
         const includeResolved = url.searchParams.get('includeResolved') === '1';
-        let tickets = readReports().filter(report => report.source !== 'demo');
+        // Resident-submitted tickets are public. An Approved sample ticket is also shown so the approval workflow can be demonstrated end-to-end without exposing private report details.
+        let tickets = readReports().filter(report => report.source !== 'demo' || Boolean(report.publicListingEnabledAt) || report.status === 'Approved');
         if (!includeResolved) tickets = tickets.filter(report => !['Resolved', 'Closed'].includes(report.status));
         tickets.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
         return sendJson(res, 200, { tickets: tickets.map(publicTicket), count: tickets.length, includeResolved });
@@ -335,9 +355,14 @@ function createApp(options = {}) {
       }
 
       // All other report records and management actions are authority-only.
-      const protectedPath = pathname === '/api/reports' || pathname === '/api/stats' || pathname === '/api/export' || pathname === '/api/demo/reset' || /^\/api\/reports\/[^/]+$/.test(pathname);
+      const protectedPath = pathname === '/api/workspace' || pathname === '/api/reports' || pathname === '/api/stats' || pathname === '/api/export' || pathname === '/api/demo/reset' || /^\/api\/reports\/[^/]+$/.test(pathname);
       if (protectedPath && !isAuthorized(req)) return unauthorized(res);
 
+      if (req.method === 'GET' && pathname === '/api/workspace') {
+        const reports = readReports();
+        const ordered = [...reports].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        return sendJson(res, 200, { reports: ordered.map(authorityListReport), stats: summarize(reports) });
+      }
       if (req.method === 'GET' && pathname === '/api/reports') {
         let reports = readReports();
         const status = cleanString(url.searchParams.get('status'), 50);
@@ -347,7 +372,7 @@ function createApp(options = {}) {
         if (category && category !== 'All') reports = reports.filter(r => r.category === category);
         if (q) reports = reports.filter(r => [r.id, r.title, r.description, r.barangay, r.address, r.category, r.department, r.reporter].some(v => String(v || '').toLowerCase().includes(q)));
         reports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        return sendJson(res, 200, { reports: reports.map(authorityViewReport), count: reports.length });
+        return sendJson(res, 200, { reports: reports.map(authorityListReport), count: reports.length });
       }
       if (req.method === 'GET' && pathname === '/api/stats') return sendJson(res, 200, summarize(readReports()));
       if (req.method === 'GET' && pathname === '/api/export') {
@@ -371,12 +396,31 @@ function createApp(options = {}) {
         const note = cleanString(body.note, 500) || `Status updated to ${status} in the Pilar360 demo. No official service action is implied.`;
         const at = new Date().toISOString();
         const previousStatus = reports[index].status;
-        reports[index] = { ...reports[index], status, department, updatedAt: at, timeline: [...(reports[index].timeline || []), { status, note, at }].slice(-30) };
+        const updatedReport = { ...reports[index], status, department, updatedAt: at,
+          timeline: [...(reports[index].timeline || []), { status, note, at }].slice(-30) };
+        // Once a sample ticket is approved, keep its ID in the public status directory
+        // even after it moves to In Progress, Resolved or another later status.
+        if (status === 'Approved') updatedReport.publicListingEnabledAt = updatedReport.publicListingEnabledAt || at;
+        else if (previousStatus === 'Approved' && !updatedReport.publicListingEnabledAt) {
+          updatedReport.publicListingEnabledAt = reports[index].approvedAt || at;
+        }
+        const expiryTime = Date.parse(reports[index].approvalExpiresAt || '');
+        const approvalExpired = !Number.isFinite(expiryTime) || expiryTime <= Date.now();
+        if (status === 'Approved' && (previousStatus !== 'Approved' || approvalExpired)) {
+          updatedReport.approvedAt = at;
+          updatedReport.approvalExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        } else if (status !== 'Approved') {
+          delete updatedReport.approvedAt;
+          delete updatedReport.approvalExpiresAt;
+        }
+        reports[index] = updatedReport;
         writeReports(reports);
-        const sms = status === 'Resolved' && previousStatus !== 'Resolved'
-          ? await sendSmsNotification(reports[index], 'resolved')
+        // Notify only when the status actually changes, avoiding duplicate SMS on unchanged saves.
+        const smsEvent = status === 'Resolved' ? 'resolved' : 'status_update';
+        const sms = status !== previousStatus
+          ? queueSmsNotification(reports[index], smsEvent, status)
           : 'not_requested';
-        return sendJson(res, 200, { report: authorityViewReport(reports[index]), sms, message: 'Demo report updated.' });
+        return sendJson(res, 200, { report: authorityViewReport(reports[index]), sms, changed: status !== previousStatus, message: 'Demo report updated.' });
       }
       if (req.method === 'POST' && pathname === '/api/demo/reset') {
         writeReports(seedReports());
@@ -388,13 +432,14 @@ function createApp(options = {}) {
       let requested = pathname === '/' ? '/index.html' : pathname;
       if (requested === '/admin' || requested === '/admin/') requested = '/admin.html';
       if (requested === '/report' || requested === '/report/') requested = '/report.html';
+      if (requested === '/contact' || requested === '/contact/') requested = '/contact.html';
       const resolved = path.resolve(PUBLIC_DIR, `.${requested}`);
       if (!resolved.startsWith(`${PUBLIC_DIR}${path.sep}`) || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return sendJson(res, 404, { error: 'Page not found.' });
       const ext = path.extname(resolved).toLowerCase();
       const contentTypes = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon' };
       const file = fs.readFileSync(resolved);
       const isAdminPage = requested === '/admin.html';
-      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream', 'Content-Length': file.length, 'Cache-Control': isAdminPage ? 'no-store' : (['.html', '.js', '.css'].includes(ext) ? 'no-cache' : 'public, max-age=3600'), 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' });
+      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream', 'Content-Length': file.length, 'Cache-Control': isAdminPage ? 'no-store' : (['.html'].includes(ext) ? 'no-cache' : (['.js', '.css'].includes(ext) ? 'public, max-age=600' : 'public, max-age=3600')), 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' });
       return req.method === 'HEAD' ? res.end() : res.end(file);
     } catch (error) {
       if (!res.headersSent) return sendJson(res, error.statusCode || 500, { error: error.message || 'Unexpected server error.' });
@@ -402,8 +447,14 @@ function createApp(options = {}) {
     }
   }
   return http.createServer((req, res) => {
+    const secureRequest = Boolean(req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Permissions-Policy', 'geolocation=(self)');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
+    if (secureRequest) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader('Content-Security-Policy', "default-src 'self' https://unpkg.com https://*.tile.openstreetmap.org; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
     handler(req, res);
   });

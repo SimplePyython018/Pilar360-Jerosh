@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102033">
-  <meta name="description" content="Pilar360 community issue reporting prototype for Barangay Marifosque, Pilar, Sorsogon.">
+  <meta name="description" content="Pilar360 community issue reporting prototype for Barangay Marifosque Pilar Sorsogon.">
   <title>Pilar360 — Public Report Portal</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/reporter.css">
@@ -18,7 +18,7 @@
   <main class="container">
     <section class="hero">
       <div class="hero-copy">
-        <div class="eyebrow"><span></span> BARANGAY MARIFOSQUE · PILAR, SORSOGON</div>
+        <div class="eyebrow"><span></span> BARANGAY MARIFOSQUE PILAR SORSOGON</div>
         <h1>Report a concern.<br><em>Follow its progress.</em></h1>
         <p>Pilar360 is a student-built demonstration that gives residents another way to record community concerns and check the status saved in the demo system.</p>
         <div class="hero-points"><span>✓ Submit a concern</span><span>✓ Keep a report ID</span><span>✓ Check status updates</span></div>
@@ -35,7 +35,9 @@
       <div class="section-heading"><div><div class="eyebrow">NEW COMMUNITY CONCERN</div><h2>Report an issue</h2><p>Complete the details below. Fields marked * are required.</p></div><span class="step-number">01 / 02</span></div>
       <form id="reportForm" novalidate>
         <div class="form-grid">
-          <label class="field full"><span>Reporter name / display name <b>*</b></span><input name="reporter" id="reporter" required maxlength="80" placeholder="Enter your name" autocomplete="name"><small>This name will be visible only in the authority demo workspace. Do not enter private contact details.</small></label>
+          <label class="field full"><span>Reporter name / display name <small class="optional">· optional</small></span><input name="reporter" id="reporter" maxlength="80" placeholder="Leave blank if you prefer" autocomplete="name"><small>If provided, your name will be visible only in the password-protected authority workspace.</small></label>
+          <label class="field full"><span>Contact number <small class="optional">· optional, not required</small></span><input name="phone" id="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="09XXXXXXXXX or +639XXXXXXXXX"><small>Your number is optional and is encrypted on the server when this feature is enabled. It is shown only in the password-protected authority workspace. If phone protection is not configured, leave this blank; you can still submit the report. Use a real number only with your own permission and understanding.</small></label>
+          <label class="consent full sms-consent"><input type="checkbox" id="smsConsent"><span>I agree to receive an SMS when this demo report is received and when it is marked resolved. SMS works only if the server has an encryption key and an SMS service configured. Standard text charges may apply.</span></label>
           <label class="field"><span>Issue title <b>*</b></span><input name="title" id="title" required minlength="5" maxlength="120" placeholder="e.g. Damaged road near waiting shed"></label>
           <label class="field"><span>Category <b>*</b></span><select name="category" id="category" required><option value="Road & Sidewalk">Road & Sidewalk</option><option>Waste & Cleanliness</option><option>Drainage & Flooding</option><option>Streetlight</option><option>Water & Utilities</option><option>Public Safety</option><option>Parks & Public Spaces</option><option>Other</option></select></label>
           <label class="field"><span>Barangay <b>*</b></span><input name="barangay" id="barangay" list="barangayOptions" required maxlength="100" placeholder="Select or type a barangay" autocomplete="off"><datalist id="barangayOptions"><option value="Marifosque"></option></datalist><small>For this proposal demo, the coverage is Barangay Marifosque only. Select the suggestion or type its name.</small></label>
@@ -53,13 +55,36 @@
     <section class="portal-panel hidden" id="trackPanel">
       <div class="section-heading"><div><div class="eyebrow">REPORT FOLLOW-UP</div><h2>Check report status</h2><p>Enter the report ID you received after submitting your concern.</p></div><span class="step-number">02 / 02</span></div>
       <form id="trackForm" class="track-form"><label class="field"><span>Report ID</span><input id="trackId" required placeholder="PIL-2026-0001" autocapitalize="characters"></label><button class="button button-primary" type="submit" id="trackButton">Find report <span>→</span></button></form>
-      <div id="trackResult" class="track-result" aria-live="polite"><div class="empty-track"><span>⌕</span><strong>No report searched yet</strong><p>Your report status and public update timeline will appear here.</p></div></div>
+      <section class="ticket-directory" aria-labelledby="ticketDirectoryTitle">
+        <div class="ticket-directory-head"><div><h3 id="ticketDirectoryTitle">Find a ticket from the public list</h3><p>Active tickets are listed by ticket ID, category, status and date only. Report details and contact numbers are not shown.</p></div><label class="include-resolved"><input type="checkbox" id="includeResolvedTickets"> Include resolved / closed tickets</label></div>
+        <div id="publicTicketList" class="public-ticket-list" aria-live="polite"><div class="empty-track">Loading ticket list…</div></div>
+        <button type="button" class="copy-button refresh-ticket-list" id="refreshTicketList">Refresh ticket list</button>
+      </section>
+      <div id="trackResult" class="track-result" aria-live="polite"><div class="empty-track"><span>⌕</span><strong>No report searched yet</strong><p>Your ticket status and update dates will appear here. Private report details are not shown in public tracking.</p></div></div>
     </section>
 
     <section class="how-it-works">
       <div><span>1</span><strong>Submit</strong><p>Share the issue, barangay location, and optional map coordinates.</p></div>
       <div><span>2</span><strong>Save your ID</strong><p>Keep the report ID shown after a successful submission.</p></div>
       <div><span>3</span><strong>Track</strong><p>Use the ID to check the latest status saved in this demo.</p></div>
+    </section>
+
+    <section class="contact-developer" id="contactDeveloper" aria-labelledby="contactDeveloperTitle">
+      <div class="contact-developer-copy">
+        <div class="eyebrow">QUESTIONS OR SUGGESTIONS?</div>
+        <h2 id="contactDeveloperTitle">Contact the developer</h2>
+        <p>Found a problem or have an idea to improve Pilar360? Send a message to the student developer. Do not include passwords, OTP codes or private documents.</p>
+        <div class="developer-contact-line"><strong>Developer:</strong> Jerosh Nevado</div>
+        <a class="developer-email" href="mailto:ahukyo@gmail.com">ahukyo@gmail.com</a>
+      </div>
+      <form id="developerContactForm" class="developer-contact-form">
+        <label class="field"><span>Your name <small class="optional">· optional</small></span><input id="developerName" maxlength="80" placeholder="Name (optional)"></label>
+        <label class="field"><span>Your email <small class="optional">· optional</small></span><input id="developerReplyEmail" type="email" maxlength="120" placeholder="For a reply (optional)"></label>
+        <label class="field full"><span>Type of concern</span><select id="developerConcernType"><option>Report a bug</option><option>Suggest an improvement</option><option>Ask a question</option><option>Other concern</option></select></label>
+        <label class="field full"><span>Message <b>*</b></span><textarea id="developerMessage" required minlength="8" maxlength="2000" rows="4" placeholder="Tell me what happened or what you want to suggest."></textarea></label>
+        <button class="button button-primary" type="submit">Prepare email <span>→</span></button>
+        <small class="contact-note">This opens your email app with the message prepared. Review it and press Send. Pilar360 does not save or send this message by itself.</small>
+      </form>
     </section>
     <div class="prototype-notice"><strong>Important demonstration notice</strong><p>Pilar360 is an independent Grade 12 project prototype. It is not operated by the Municipality of Pilar or Barangay Marifosque. Reports are stored by the demo server only; no barangay official is automatically notified and no repair or official response is guaranteed. Use fictional/sample information during public demonstrations unless proper school and community permission has been obtained.</p></div>
   </main>

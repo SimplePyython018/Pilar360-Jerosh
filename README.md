@@ -1,8 +1,18 @@
 # Pilar360 — Community Issue Reporting & Tracking Prototype
 
-**Pilar360** is an independent Grade 12 ICT student project prototype by Jerosh Nevado. It focuses on Barangay Marifosque, Pilar, Sorsogon, and demonstrates a simple way to submit a community concern, receive a report ID, and view status updates saved in the demonstration system.
+**Pilar360** is an independent Grade 12 ICT student project prototype by Jerosh Nevado. It focuses on Barangay Marifosque Pilar Sorsogon, and demonstrates a simple way to submit a community concern, receive a report ID, and view status updates saved in the demonstration system.
 
 > **Important:** Pilar360 is a school project demonstration, not an official Barangay Marifosque or Municipality of Pilar service. Reports are saved by this demo server only. No barangay or municipal office is automatically notified, no official case number is issued, and no repair or response is guaranteed. Do not collect real residents' personal information or use it for public-service operations without school approval, barangay/LGU permission, and proper privacy/security review.
+
+## Version 2.3 improvements
+
+- Added a public ticket directory for active reports so a resident can recover a forgotten ticket ID. The default list shows only ticket ID, category, status and update date; it does not show report descriptions, titles, reporter names, landmarks, photos, coordinates or contact numbers.
+- Added an option to include resolved/closed tickets in the public directory so an old ticket ID can still be found.
+- Changed public ticket lookup to show status history and dates only. Full report content and the full contact number remain authority-only.
+- Added optional reporter name and Philippine mobile number fields. The full number is encrypted at rest with AES-256-GCM, never returned by public endpoints, and shown only after authority sign-in. A server encryption key is required before a number can be accepted.
+- Added opt-in SMS notification hooks for report submission and transition to Resolved. SMS is disabled unless the server encryption key and Semaphore API key are configured in the server environment. SMS delivery depends on the provider, account approval, credits and mobile network; the UI always tells the reporter to keep the ticket ID.
+- Added a basic per-connection submission limit to reduce accidental or repeated demo spam.
+- Added tests for public-ticket privacy, private phone access and the resolved notification workflow.
 
 ## Version 2.2 improvements
 
@@ -21,10 +31,10 @@
 
 1. Visitor opens the project link at `/` and reads the short introduction.
 2. Visitor taps **Explore Pilar360** to open `/report`.
-3. Reporter fills in the required information and types/selects `Marifosque` as the barangay.
+3. Reporter fills in the required report information, may leave the name and phone number blank, and types/selects `Marifosque` as the barangay.
 4. Reporter may tap the map, use device location, enter coordinates, or provide a nearby landmark.
 5. The system saves the demonstration record and displays a report ID.
-6. Reporter uses the report ID in **Check report status**.
+6. Reporter can use the report ID in **Check report status** or find it in the public ticket directory. Resolved/closed tickets can be included with the filter.
 7. The authority user opens `/admin`, signs in, taps a report card or **View report details**, checks the photo area and location map, and updates the demo status.
 8. When signing out, a clear Yes/No dialog appears. Choosing Yes ends the session and returns to `/report`; choosing No keeps the authority workspace open.
 
@@ -34,10 +44,12 @@
 
 1. Extract the ZIP.
 2. In the project folder, copy `.env.example` to `.env`.
-3. Open `.env` and set a private demo password:
+3. Open `.env` and set a private demo password. Phone numbers are optional and will stay disabled until you add a private encryption key of at least 32 characters:
 
    ```env
    PILAR360_ADMIN_PASSWORD=choose-a-private-demo-password
+   # Optional phone encryption (only if you plan to collect contact numbers)
+   # PILAR360_PHONE_ENCRYPTION_KEY=copy-a-64-character-random-hex-value-here
    ```
 
 4. Start the app:
@@ -63,9 +75,17 @@ To stop the server, press `Ctrl+C`.
 
 ## Hosting setup (Render)
 
-Set the environment variable `PILAR360_ADMIN_PASSWORD` in the Render web service's **Environment** settings. Do not put the password in `public/admin-app.js`, HTML, or a committed GitHub file. The default server host is `0.0.0.0`; Render supplies the `PORT` value. After saving environment changes, allow Render to rebuild and deploy.
+Set `PILAR360_ADMIN_PASSWORD` in the Render web service's **Environment** settings. Do not put the password in frontend files or a committed GitHub file. If you plan to accept optional contact numbers, also set `PILAR360_PHONE_ENCRYPTION_KEY` to a private random value with at least 32 characters. Generate one in Termux with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Keep the same value permanently; changing or losing it prevents the server from decrypting old numbers. Add `SEMAPHORE_API_KEY` only after setting up an SMS provider account. The default server host is `0.0.0.0`; Render supplies the `PORT` value. After saving environment changes, allow Render to rebuild and deploy.
 
 The JSON data file may not survive a host restart or redeploy when the platform uses an ephemeral filesystem. A persistent disk/database is needed to preserve records reliably; this prototype does not configure one. Use fictional records for a class demonstration.
+
+### Optional SMS setup
+
+Pilar360 can request SMS notifications through Semaphore only when the server administrator configures both `PILAR360_PHONE_ENCRYPTION_KEY` and `SEMAPHORE_API_KEY` in the hosting environment. `SEMAPHORE_SENDERNAME` may also be set if an approved sender name is available. Do not place these values in browser files or commit them to GitHub. The provider may require account approval and paid SMS credits. When SMS is not configured or cannot be queued, the report is still saved and the website asks the reporter to keep the ticket ID. Do not use real residents’ phone numbers in a school demo without permission and adviser approval.
+
+### Ticket directory and privacy
+
+The public directory lists ticket IDs, categories, statuses and update dates only. It does not reveal the full issue description, reporter name, phone number, photo, exact landmark or map coordinates. The public tracker follows the same limited view. Full report details and the optional decrypted contact number are available only after authority sign-in; the phone number is encrypted in the server data file. Public ticket IDs are visible to everyone, so use demo/test information and do not treat the ticket ID as a private password.
 
 ## Map and device support
 
@@ -90,6 +110,7 @@ Pilar360_Jerosh/
 │   └── favicon.svg
 ├── data/reports.json         # Created automatically; ignored by Git
 ├── tests/smoke-test.js       # API, access-control and page-route tests
+├── tests/privacy-notifications-test.js # Ticket privacy, phone encryption and SMS flow tests
 ├── API.md
 ├── ARCHITECTURE.md
 └── DEFENSE_GUIDE.md
@@ -106,3 +127,16 @@ The tests create a temporary data file and check the main user and authority wor
 ## Project boundary
 
 Pilar360 is an independent student-developed prototype. It is not officially owned, approved, or operated by a barangay or local government office. The authority password gate is a restricted classroom demo control, not a production-grade identity system. The in-memory authority sessions end when the server restarts. Production use would require formal LGU approval, individual authorized accounts, durable database and file storage, audit logging, privacy notice/consent, backup and retention rules, abuse protection, monitoring, and professional security testing.
+
+
+## Contact developer
+
+The reporter portal includes a simple concern form for the project developer. Submitting the form opens the visitor's default email app with a message addressed to `ahukyo@gmail.com`; the visitor must review and press Send. The website does not automatically send or store this message. A direct server-side email form would need a configured email provider and private credentials.
+
+## Phone number privacy
+
+The contact number is optional. If a number is entered, the server requires `PILAR360_PHONE_ENCRYPTION_KEY` and stores the number encrypted with AES-256-GCM. Generate a long random key on a trusted device, set it as a private environment variable on the hosting service, and keep the same key for as long as saved phone numbers need to be read. If the key is lost or changed, previously encrypted numbers cannot be recovered. Never put the real key in GitHub, `.env.example`, browser JavaScript, screenshots, or public messages. Do not collect real residents' numbers for a class demonstration without permission and adviser approval.
+
+### Optional SMS setup
+
+After phone encryption is configured, SMS can be enabled by setting `SEMAPHORE_API_KEY` in the server environment. `SEMAPHORE_SENDERNAME` is optional when a default sender name is already registered on the Semaphore account. SMS requests are sent from the server to Semaphore; the API may return queued, pending or sent status. A request being accepted by the provider does not guarantee immediate delivery to the handset. Account setup, sender-name requirements and SMS credits are managed by the provider. When SMS is not configured or cannot be queued, the report is still saved and the user is told to keep the ticket ID.

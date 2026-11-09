@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.0 - Public ticket list, privacy and optional SMS
+- Added a public list of active ticket IDs and an option to include resolved/closed tickets.
+- Limited public ticket list and lookup to ticket ID, category, status and dates; detailed report fields remain authority-only.
+- Made reporter name optional and added an optional Philippine mobile number with explicit SMS opt-in. The number is encrypted at rest with AES-256-GCM and decrypted only for authority responses. Older plain-text phone values are migrated after an encryption key is configured.
+- Added optional Semaphore SMS notifications for receipt and transition to Resolved. SMS requires the phone encryption key, provider API key, sender setup and available credits; failure does not prevent report storage or status updates.
+- Added a per-connection report submission limit and Contact Developer email-preparation form.
+- Added tests for ticket recovery, phone privacy, public response minimization and status/SMS workflows.
+
+
 ## 2.2.0 — 2026-11-03
 
 - Reworked the authority report inbox into responsive cards with whole-card touch and keyboard activation.

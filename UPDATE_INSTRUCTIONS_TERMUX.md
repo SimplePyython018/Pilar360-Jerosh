@@ -1,20 +1,21 @@
-# Update Pilar360 to v2.2.0 using Termux
+# Update Pilar360 to v2.3.0 using Termux
 
-These steps replace the project code while preserving the existing Git repository, `.env`, `data/reports.json`, and the backup file `server.js.backup`.
+These steps replace the project code while preserving your existing Git repository, `.env`, report data file and `server.js.backup`.
 
-1. Download `Pilar360_Jerosh_v2.2.0.zip` to your Android Downloads folder.
+1. Download `Pilar360_Jerosh_v2.3.0.zip` to your Android Downloads folder.
 2. In Termux, run:
 
 ```bash
 termux-setup-storage
 pkg install unzip rsync -y
 mkdir -p ~/Pilar360/update
-unzip -o ~/storage/downloads/Pilar360_Jerosh_v2.2.0.zip -d ~/Pilar360/update
+unzip -o ~/storage/downloads/Pilar360_Jerosh_v2.3.0.zip -d ~/Pilar360/update
 ```
 
 3. Copy the new app files into the existing repository. Do not remove the excludes:
 
 ```bash
+cd ~/Pilar360/Pilar360_Jerosh
 rsync -av --delete \
   --exclude='.git/' \
   --exclude='.env' \
@@ -24,32 +25,43 @@ rsync -av --delete \
   ~/Pilar360/Pilar360_Jerosh/
 ```
 
-4. Test the updated code:
+4. Run the tests:
 
 ```bash
-cd ~/Pilar360/Pilar360_Jerosh
+npm install
 npm test
 ```
 
-5. Remove the accidentally tracked backup from GitHub while keeping the local copy, then commit and push:
+5. Review the Git changes, then commit and push:
 
 ```bash
 git rm --cached server.js.backup 2>/dev/null || true
 git status
 git add -A
-git commit -m "Upgrade Pilar360 to v2.2.0"
+git commit -m "Upgrade Pilar360 to v2.3.0"
 git push origin main
 ```
 
 If GitHub asks for a password over HTTPS, use your GitHub Personal Access Token at the password prompt. Never paste the token into a chat or save it in a project file.
 
-6. Render should auto-deploy after the push. Wait until the latest commit shows **Live**. The existing Render environment variable `PILAR360_ADMIN_PASSWORD` should remain configured; do not add it to GitHub.
+6. Render should auto-deploy after the push. Wait until the latest commit shows **Live**. Keep `PILAR360_ADMIN_PASSWORD` configured in Render Environment settings. Do not add it to GitHub.
+
+## Optional phone and SMS setup
+
+Phone numbers are optional. To accept one, first generate a private encryption key in Termux:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Copy the generated value directly into the Render Environment settings as `PILAR360_PHONE_ENCRYPTION_KEY`. Keep it private and do not send it in chat or commit it to GitHub. Keep the same key permanently; changing or losing it prevents the server from decrypting previously saved phone numbers.
+
+SMS also needs a Semaphore account and API key. Add the API key to Render as `SEMAPHORE_API_KEY`. Add `SEMAPHORE_SENDERNAME` only if you need to select a registered sender name. Never put either value in browser files, screenshots, or GitHub. SMS can use paid credits and provider approval. Do not use real residents' numbers for a class demo without permission and adviser approval.
 
 ## New URLs
 
 - `https://pilar360-jerosh.onrender.com/` — project introduction page
-- `https://pilar360-jerosh.onrender.com/report` — public report and tracking portal
-- `https://pilar360-jerosh.onrender.com/admin` — authority sign-in
+- `https://pilar360-jerosh.onrender.com/report` — public report, ticket list, status tracking and Contact Developer
+- `https://pilar360-jerosh.onrender.com/admin` — authority sign-in and private report workspace
 
-The map tiles need an internet connection. If the map does not load, the reporter can still type coordinates or give a nearby landmark. Use fictional/sample data during a classroom demonstration.
-
+The map tiles need an internet connection. If the map does not load, the reporter can still give a nearby landmark. Use fictional/sample information during a classroom demonstration.

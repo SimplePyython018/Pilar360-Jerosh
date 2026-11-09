@@ -21,6 +21,8 @@
   }
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => switchTab(button.dataset.tab)));
   $('#year').textContent = new Date().getFullYear();
+  const phoneInput = $('#phone');
+  const smsConsentInput = $('#smsConsent');
   if (new URLSearchParams(location.search).get('signedOut') === '1') {
     showToast('You are signed out. You are now back on the public report page.');
     history.replaceState({}, '', '/report');
@@ -126,7 +128,6 @@
     const barangay = $('#barangay').value.trim();
     if (!barangay) return showToast('Select or type the barangay.', true);
     if (barangay.toLowerCase() !== 'marifosque') return showToast('This proposal demo currently covers Barangay Marifosque only.', true);
-    if (!$('#reporter').value.trim() || $('#reporter').value.trim().length < 2) return showToast('Enter your name or display name.', true);
     if (!$('#title').value.trim() || $('#title').value.trim().length < 5) return showToast('Issue title must have at least 5 characters.', true);
     if (!$('#description').value.trim() || $('#description').value.trim().length < 15) return showToast('Please describe the concern in at least 15 characters.', true);
     if (!$('#confirmDemo').checked) return showToast('Please confirm that this is a demo project.', true);
@@ -134,14 +135,18 @@
     if ((latText && !lngText) || (!latText && lngText)) return showToast('Enter both latitude and longitude, or leave both blank.', true);
     if (!$('#address').value.trim() && !(latText && lngText)) return showToast('Add a nearby street or landmark, or select a pin on the map.', true);
     const button = $('#submitButton'); button.disabled = true; button.textContent = 'Saving report…';
-    const body = { reporter: $('#reporter').value.trim(), title: $('#title').value.trim(), category: $('#category').value, barangay, address: $('#address').value.trim(), description: $('#description').value.trim(), priority: 'Normal', lat: latText || null, lng: lngText || null, photoData };
+    const body = { reporter: $('#reporter').value.trim(), phone: phoneInput.value.trim(), smsConsent: smsConsentInput.checked, title: $('#title').value.trim(), category: $('#category').value, barangay, address: $('#address').value.trim(), description: $('#description').value.trim(), priority: 'Normal', lat: latText || null, lng: lngText || null, photoData };
     try {
       const result = await api('/api/reports', { method: 'POST', body: JSON.stringify(body) });
-      $('#submitResult').innerHTML = `<strong>Report saved successfully in the demo.</strong><div class="report-id">${escapeHtml(result.report.id)}</div><p>Save this ID. You can use it in “Check report status”. This is not an official barangay report number.</p><button class="copy-button" type="button" id="copyReportId">Copy report ID</button> <button class="copy-button" type="button" id="trackThisReport">Check status now</button>`;
+      const smsMessage = result.sms === 'queued'
+        ? 'The SMS provider accepted the notification request. Delivery is not guaranteed.'
+        : (body.phone && body.smsConsent ? (result.sms === 'not_configured' ? 'SMS notification is not enabled on this demo server. Please keep your ticket ID.' : 'The report was saved, but the SMS provider did not accept the request. Please keep your ticket ID.') : 'No SMS notification was requested.');
+      $('#submitResult').innerHTML = `<strong>Report saved successfully in the demo.</strong><div class="report-id">${escapeHtml(result.report.id)}</div><p>Save this ID. You can use it in “Check report status”. This is not an official barangay report number.</p><p class="sms-result-note">${escapeHtml(smsMessage)}</p><button class="copy-button" type="button" id="copyReportId">Copy report ID</button> <button class="copy-button" type="button" id="trackThisReport">Check status now</button>`;
       $('#submitResult').classList.remove('hidden');
       $('#copyReportId').addEventListener('click', async () => { try { await navigator.clipboard.writeText(result.report.id); showToast('Report ID copied.'); } catch { showToast(`Your report ID is ${result.report.id}`); } });
       $('#trackThisReport').addEventListener('click', () => { $('#trackId').value = result.report.id; switchTab('track'); $('#trackForm').requestSubmit(); });
-      form.reset(); photoData = null; clearLocation(); $('#photoPreview').classList.add('hidden'); $('#photoHint').textContent = 'PNG, JPG, or WebP · maximum 3 MB.';
+      form.reset(); photoData = null; clearLocation(); smsConsentInput.checked = false; $('#photoPreview').classList.add('hidden'); $('#photoHint').textContent = 'PNG, JPG, or WebP · maximum 3 MB.';
+      await loadPublicTickets();
       window.scrollTo({ top: $('#submitResult').getBoundingClientRect().top + window.scrollY - 100, behavior: 'smooth' });
       showToast('Your demo report was saved. Keep the report ID.');
     } catch (error) { showToast(error.message, true); }
@@ -154,10 +159,64 @@
     try {
       const result = await api(`/api/track/${encodeURIComponent(id)}`); const r = result.report;
       const timeline = (r.timeline || []).slice().sort((a,b) => new Date(a.at) - new Date(b.at));
-      $('#trackResult').innerHTML = `<article class="track-card"><div class="track-card-head"><div><div class="track-id">${escapeHtml(r.id)}</div><h3>${escapeHtml(r.title)}</h3></div><span class="status-chip">${escapeHtml(r.status)}</span></div><div class="track-meta"><span>${escapeHtml(r.category)}</span><span>Brgy. ${escapeHtml(r.barangay)}</span><span>Updated ${prettyDate(r.updatedAt)}</span></div>${r.address ? `<p style="font-size:11px;color:#7d8c95;margin:0 0 18px">Landmark: ${escapeHtml(r.address)}</p>` : ''}<h4 style="font-size:11px;color:#536876;margin:0 0 15px">Status updates</h4><div class="timeline">${timeline.map(item => `<div class="timeline-item"><strong>${escapeHtml(item.status)}</strong><p>${escapeHtml(item.note)}</p><time>${prettyDate(item.at)}</time></div>`).join('') || '<p>No updates yet.</p>'}</div><p style="font-size:9px;color:#9aa5ac;margin:4px 0 0">Updates shown here are saved in the student demonstration only. They do not confirm official action by barangay personnel.</p></article>`;
+      $('#trackResult').innerHTML = `<article class="track-card"><div class="track-card-head"><div><div class="track-id">${escapeHtml(r.id)}</div><h3>Report status</h3></div><span class="status-chip">${escapeHtml(r.status)}</span></div><div class="track-meta"><span>${escapeHtml(r.category)}</span><span>Submitted ${prettyDate(r.createdAt)}</span><span>Updated ${prettyDate(r.updatedAt)}</span></div><h4 style="font-size:11px;color:#536876;margin:0 0 15px">Status history</h4><div class="timeline">${timeline.map(item => `<div class="timeline-item"><strong>${escapeHtml(item.status)}</strong><time>${prettyDate(item.at)}</time></div>`).join('') || '<p>No updates yet.</p>'}</div><p style="font-size:9px;color:#9aa5ac;margin:4px 0 0">This public view shows ticket status only. The full report and contact information are available only in the authority workspace. Status updates are part of this student demo and do not confirm official barangay action.</p></article>`;
     } catch (error) { $('#trackResult').innerHTML = `<div class="empty-track"><strong>Report not found</strong><p>${escapeHtml(error.message)}</p></div>`; }
     finally { button.disabled = false; button.innerHTML = 'Find report <span>→</span>'; }
   });
+  function renderPublicTicketList(tickets) {
+    const host = $('#publicTicketList');
+    if (!tickets.length) {
+      host.innerHTML = '<div class="empty-track"><strong>No tickets in this list</strong><p>There are no public demo tickets matching this filter right now.</p></div>';
+      return;
+    }
+    host.innerHTML = tickets.map(ticket => `<article class="public-ticket-row"><div class="public-ticket-main"><strong>${escapeHtml(ticket.id)}</strong><span>${escapeHtml(ticket.category)}</span></div><div class="public-ticket-side"><span class="ticket-list-status">${escapeHtml(ticket.status)}</span><small>Updated ${prettyDate(ticket.updatedAt)}</small></div><button type="button" class="copy-button" data-use-ticket="${escapeHtml(ticket.id)}">Use ticket ID</button></article>`).join('');
+  }
+  async function loadPublicTickets() {
+    const host = $('#publicTicketList');
+    host.innerHTML = '<div class="empty-track">Loading ticket list…</div>';
+    try {
+      const includeResolved = $('#includeResolvedTickets').checked;
+      const result = await api(`/api/public/tickets${includeResolved ? '?includeResolved=1' : ''}`);
+      renderPublicTicketList(result.tickets || []);
+    } catch (error) {
+      host.innerHTML = `<div class="empty-track"><strong>Could not load ticket list</strong><p>${escapeHtml(error.message)}</p><button type="button" class="copy-button" id="retryTicketList">Try again</button></div>`;
+      $('#retryTicketList')?.addEventListener('click', loadPublicTickets);
+    }
+  }
+  $('#includeResolvedTickets').addEventListener('change', loadPublicTickets);
+  $('#refreshTicketList').addEventListener('click', loadPublicTickets);
+  $('#publicTicketList').addEventListener('click', event => {
+    const button = event.target.closest('[data-use-ticket]');
+    if (!button) return;
+    $('#trackId').value = button.dataset.useTicket;
+    $('#trackForm').requestSubmit();
+  });
+
+  $('#developerContactForm').addEventListener('submit', event => {
+    event.preventDefault();
+    const name = $('#developerName').value.trim();
+    const replyEmail = $('#developerReplyEmail').value.trim();
+    const type = $('#developerConcernType').value;
+    const message = $('#developerMessage').value.trim();
+    if (message.length < 8) return showToast('Please enter a little more detail about your concern.', true);
+    const subject = `Pilar360 - ${type}`;
+    const body = [
+      'Hello Jerosh,',
+      '',
+      'I would like to send a message about the Pilar360 student prototype.',
+      `Concern: ${type}`,
+      `Name: ${name || 'Not provided'}`,
+      `Reply email: ${replyEmail || 'Not provided'}`,
+      '',
+      'Message:',
+      message,
+      '',
+      `Page: /report`
+    ].join('\n');
+    window.location.href = `mailto:ahukyo@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    showToast('Your email app should open with the message prepared. Review it and press Send.');
+  });
+  loadPublicTickets();
   loadLocationMapLibrary();
   const params = new URLSearchParams(location.search);
   if (params.get('track')) { $('#trackId').value = params.get('track'); switchTab('track'); $('#trackForm').requestSubmit(); }

@@ -90,26 +90,58 @@ function parseCookies(header = '') {
     return index < 0 ? [part, ''] : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
   }));
 }
+function normalizePHMobile(value) {
+  const compact = String(value || '').replace(/[\s()-]/g, '');
+  if (/^09\d{9}$/.test(compact)) return `63${compact.slice(1)}`;
+  if (/^\+639\d{9}$/.test(compact)) return compact.slice(1);
+  if (/^639\d{9}$/.test(compact)) return compact;
+  return '';
+}
+function publicTicket(report) {
+  // Public list intentionally contains no title, description, reporter, phone, landmark, photo or coordinates.
+  return { id: report.id, category: report.category, status: report.status, createdAt: report.createdAt, updatedAt: report.updatedAt };
+}
 function publicReport(report) {
+  // Ticket lookup is a status-only view. Full report details stay behind authority sign-in.
   return {
-    id: report.id, title: report.title, category: report.category, barangay: report.barangay,
-    address: report.address || '', status: report.status, createdAt: report.createdAt,
-    updatedAt: report.updatedAt,
-    timeline: (report.timeline || []).map(item => ({ status: item.status, note: item.note, at: item.at }))
+    id: report.id, category: report.category, status: report.status,
+    createdAt: report.createdAt, updatedAt: report.updatedAt,
+    timeline: (report.timeline || []).map(item => ({ status: item.status, at: item.at }))
   };
 }
 function createApp(options = {}) {
   const dataFile = options.dataFile || process.env.PILAR360_DATA_FILE || DEFAULT_DATA_FILE;
   const adminPassword = options.adminPassword ?? process.env.PILAR360_ADMIN_PASSWORD ?? '';
+  const smsApiKey = options.smsApiKey ?? process.env.SEMAPHORE_API_KEY ?? '';
+  const smsSenderName = options.smsSenderName ?? process.env.SEMAPHORE_SENDERNAME ?? '';
+  const smsSender = options.smsSender;
+  const phoneEncryptionKey = options.phoneEncryptionKey ?? process.env.PILAR360_PHONE_ENCRYPTION_KEY ?? '';
   const sessions = new Map();
   const loginAttempts = new Map();
+  const submissionAttempts = new Map();
   fs.mkdirSync(path.dirname(dataFile), { recursive: true });
   if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify(seedReports(), null, 2));
 
   function readReports() {
     try {
       const value = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-      return Array.isArray(value) ? value : [];
+      if (!Array.isArray(value)) return [];
+
+      // Migrate legacy plain-text contact numbers when the private key is configured.
+      // If the key is missing, authority responses hide legacy values until migration is possible.
+      if (derivePhoneKey()) {
+        let migrated = false;
+        const updated = value.map(report => {
+          if (typeof report.phone !== 'string' || !report.phone.trim()) return report;
+          const next = { ...report, phoneEncrypted: encryptPhoneNumber(report.phone.trim()) };
+          delete next.phone;
+          migrated = true;
+          return next;
+        });
+        if (migrated) writeReports(updated);
+        return updated;
+      }
+      return value;
     } catch (error) {
       console.error('[Pilar360] Unable to read report data:', error.message);
       throw Object.assign(new Error('The demo report file could not be read. Check data/reports.json.'), { statusCode: 500 });
@@ -131,13 +163,81 @@ function createApp(options = {}) {
   function isAuthorized(req) { return Boolean(currentSession(req)); }
   function unauthorized(res) { return sendJson(res, 401, { error: 'Authority access required. Please sign in again.' }); }
   function clientIp(req) { return req.socket.remoteAddress || 'unknown'; }
+  function derivePhoneKey() {
+    return phoneEncryptionKey && Buffer.byteLength(String(phoneEncryptionKey), 'utf8') >= 32
+      ? crypto.createHash('sha256').update(String(phoneEncryptionKey), 'utf8').digest()
+      : null;
+  }
+  function encryptPhoneNumber(number) {
+    const key = derivePhoneKey();
+    if (!key) throw Object.assign(new Error('Optional phone contact is disabled until the server encryption key is configured with at least 32 characters.'), { statusCode: 503 });
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const ciphertext = Buffer.concat([cipher.update(number, 'utf8'), cipher.final()]);
+    return { version: 1, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: ciphertext.toString('base64') };
+  }
+  function decryptPhoneNumber(report) {
+    const value = report.phoneEncrypted;
+    const key = derivePhoneKey();
+    if (!value || !key || value.version !== 1) return '';
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(value.iv, 'base64'));
+      decipher.setAuthTag(Buffer.from(value.tag, 'base64'));
+      return Buffer.concat([decipher.update(Buffer.from(value.data, 'base64')), decipher.final()]).toString('utf8');
+    } catch {
+      return '';
+    }
+  }
+  function authorityViewReport(report) {
+    const { phoneEncrypted, phone: legacyPhone, ...visible } = report;
+    return { ...visible, phone: decryptPhoneNumber(report), phoneProtected: Boolean(phoneEncrypted) };
+  }
   function hasValidOrigin(req) {
     const origin = req.headers.origin;
     if (!origin) return true; // Non-browser clients may omit Origin; browser requests are checked.
     try { return new URL(origin).host === req.headers.host; } catch { return false; }
   }
+  async function sendSmsNotification(report, eventType) {
+    const phone = report.phone || decryptPhoneNumber(report);
+    if (!phone || report.smsConsent !== true) return 'not_requested';
+    const message = eventType === 'resolved'
+      ? `Pilar360 demo: Ticket ${report.id} is now marked RESOLVED in the student prototype. This does not confirm official barangay action.`
+      : `Pilar360 demo: Your report ${report.id} was saved. Keep this ticket ID to check its status. This is not an official barangay report.`;
+    try {
+      if (typeof smsSender === 'function') {
+        await smsSender({ number: phone, message, reportId: report.id, eventType });
+        return 'queued';
+      }
+      if (!smsApiKey) return 'not_configured';
+      const form = new URLSearchParams({ apikey: smsApiKey, number: phone, message });
+      if (smsSenderName) form.set('sendername', smsSenderName);
+      const response = await fetch('https://api.semaphore.co/api/v4/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form.toString(),
+        signal: AbortSignal.timeout(8000)
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload) throw new Error(`SMS provider returned HTTP ${response.status}`);
+      const item = Array.isArray(payload) ? payload[0] : payload;
+      const providerStatus = String(item?.status || '').toLowerCase();
+      if (!['queued', 'pending', 'sent'].includes(providerStatus)) {
+        throw new Error('SMS provider did not accept the message');
+      }
+      return 'queued';
+    } catch (error) {
+      // Never log the contact number or provider key.
+      console.warn('[Pilar360] SMS notification could not be queued:', error.message);
+      return 'failed';
+    }
+  }
   function loginLimit(ip) {
     const entry = loginAttempts.get(ip) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+    if (entry.resetAt <= Date.now()) { entry.count = 0; entry.resetAt = Date.now() + 15 * 60 * 1000; }
+    return entry;
+  }
+  function submissionLimit(ip) {
+    const entry = submissionAttempts.get(ip) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
     if (entry.resetAt <= Date.now()) { entry.count = 0; entry.resetAt = Date.now() + 15 * 60 * 1000; }
     return entry;
   }
@@ -149,7 +249,7 @@ function createApp(options = {}) {
     catch { return sendJson(res, 400, { error: 'Invalid URL path.' }); }
     try {
       if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) && !hasValidOrigin(req)) return sendJson(res, 403, { error: 'Request origin was not accepted.' });
-      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.2.0-demo', mode: 'prototype', now: new Date().toISOString() });
+      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.3.0-demo', mode: 'prototype', now: new Date().toISOString() });
 
       if (req.method === 'GET' && pathname === '/api/admin/session') return sendJson(res, 200, { authenticated: isAuthorized(req), configured: Boolean(adminPassword) });
       if (req.method === 'POST' && pathname === '/api/admin/login') {
@@ -186,30 +286,47 @@ function createApp(options = {}) {
         const barangay = 'Marifosque';
         const address = cleanString(body.address, 240);
         const reporter = cleanString(body.reporter, 80);
+        const rawPhone = cleanString(body.phone, 32);
+        const phone = rawPhone ? normalizePHMobile(rawPhone) : '';
+        const smsConsent = Boolean(phone && body.smsConsent === true);
         const priority = PRIORITIES.includes(body.priority) ? body.priority : 'Normal';
         if (title.length < 5) return sendJson(res, 422, { error: 'Please enter a clear title with at least 5 characters.' });
         if (description.length < 15) return sendJson(res, 422, { error: 'Please add a description with at least 15 characters.' });
         if (!CATEGORIES.includes(category)) return sendJson(res, 422, { error: 'Choose a valid report category.' });
         if (barangayInput.toLowerCase() !== 'marifosque') return sendJson(res, 422, { error: 'Select or type Marifosque. This proposal demo currently covers Barangay Marifosque only.' });
-        if (reporter.length < 2) return sendJson(res, 422, { error: 'Please enter the name or display name of the reporter.' });
+        if (rawPhone && !phone) return sendJson(res, 422, { error: 'Enter a valid Philippine mobile number, such as 09XXXXXXXXX or +639XXXXXXXXX.' });
+        if (phone && !derivePhoneKey()) return sendJson(res, 503, { error: 'Optional phone contact is not enabled. The server needs a private encryption key with at least 32 characters. You can submit the report without a phone number.' });
         const latInput = body.lat === '' || body.lat == null ? null : Number(body.lat);
         const lngInput = body.lng === '' || body.lng == null ? null : Number(body.lng);
         if ((latInput === null) !== (lngInput === null)) return sendJson(res, 422, { error: 'Enter both latitude and longitude, or leave both blank.' });
         if ((latInput !== null && (!Number.isFinite(latInput) || latInput < -90 || latInput > 90)) || (lngInput !== null && (!Number.isFinite(lngInput) || lngInput < -180 || lngInput > 180))) return sendJson(res, 422, { error: 'The map coordinates are invalid.' });
         if (!address && latInput === null) return sendJson(res, 422, { error: 'Add a nearby street or landmark, or select a location pin on the map.' });
         const photoData = validatePhoto(body.photoData);
+        const submitIp = clientIp(req);
+        const submitAttempts = submissionLimit(submitIp);
+        if (submitAttempts.count >= 8) return sendJson(res, 429, { error: 'Too many demo submissions from this connection. Please try again in 15 minutes.' });
+        submitAttempts.count += 1;
+        submissionAttempts.set(submitIp, submitAttempts);
         const now = new Date().toISOString();
         const reports = readReports();
         const nextSequence = (reports.reduce((max, r) => Math.max(max, Number((String(r.id).match(/(\d+)$/) || [0, 0])[1])), 0) + 1).toString().padStart(4, '0');
         const report = {
           id: `PIL-${new Date().getFullYear()}-${nextSequence}`, title, category, description, barangay, address,
           priority, status: 'Submitted', department: 'Unassigned', lat: latInput, lng: lngInput,
-          createdAt: now, updatedAt: now, reporter, source: 'resident-demo', photoData,
+          createdAt: now, updatedAt: now, reporter, phoneEncrypted: phone ? encryptPhoneNumber(phone) : null, smsConsent, source: 'resident-demo', photoData,
           timeline: [{ status: 'Submitted', note: 'Your report was saved in the Pilar360 demonstration system. This is not an official LGU submission.', at: now }]
         };
         reports.push(report);
         writeReports(reports);
-        return sendJson(res, 201, { report: { id: report.id, status: report.status }, message: 'Demo report saved. Keep the report ID to check its status.' });
+        const sms = await sendSmsNotification(report, 'submitted');
+        return sendJson(res, 201, { report: { id: report.id, status: report.status }, sms, message: 'Demo report saved. Keep the report ID to check its status.' });
+      }
+      if (req.method === 'GET' && pathname === '/api/public/tickets') {
+        const includeResolved = url.searchParams.get('includeResolved') === '1';
+        let tickets = readReports().filter(report => report.source !== 'demo');
+        if (!includeResolved) tickets = tickets.filter(report => !['Resolved', 'Closed'].includes(report.status));
+        tickets.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+        return sendJson(res, 200, { tickets: tickets.map(publicTicket), count: tickets.length, includeResolved });
       }
       const trackMatch = pathname.match(/^\/api\/track\/([^/]+)$/);
       if (req.method === 'GET' && trackMatch) {
@@ -230,18 +347,18 @@ function createApp(options = {}) {
         if (category && category !== 'All') reports = reports.filter(r => r.category === category);
         if (q) reports = reports.filter(r => [r.id, r.title, r.description, r.barangay, r.address, r.category, r.department, r.reporter].some(v => String(v || '').toLowerCase().includes(q)));
         reports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        return sendJson(res, 200, { reports, count: reports.length });
+        return sendJson(res, 200, { reports: reports.map(authorityViewReport), count: reports.length });
       }
       if (req.method === 'GET' && pathname === '/api/stats') return sendJson(res, 200, summarize(readReports()));
       if (req.method === 'GET' && pathname === '/api/export') {
-        const payload = JSON.stringify({ app: 'Pilar360', exportType: 'DEMO_DATA', exportedAt: new Date().toISOString(), reports: readReports() }, null, 2);
+        const payload = JSON.stringify({ app: 'Pilar360', exportType: 'DEMO_DATA', exportedAt: new Date().toISOString(), reports: readReports().map(authorityViewReport) }, null, 2);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="pilar360-demo-export.json"', 'Content-Length': Buffer.byteLength(payload), 'Cache-Control': 'no-store' });
         return res.end(payload);
       }
       const reportMatch = pathname.match(/^\/api\/reports\/([^/]+)$/);
       if (req.method === 'GET' && reportMatch) {
         const report = readReports().find(r => r.id === reportMatch[1]);
-        return report ? sendJson(res, 200, { report }) : sendJson(res, 404, { error: 'Report not found.' });
+        return report ? sendJson(res, 200, { report: authorityViewReport(report) }) : sendJson(res, 404, { error: 'Report not found.' });
       }
       if (req.method === 'PATCH' && reportMatch) {
         const body = await readBody(req);
@@ -253,9 +370,13 @@ function createApp(options = {}) {
         const department = cleanString(body.department, 100) || reports[index].department || 'Unassigned';
         const note = cleanString(body.note, 500) || `Status updated to ${status} in the Pilar360 demo. No official service action is implied.`;
         const at = new Date().toISOString();
+        const previousStatus = reports[index].status;
         reports[index] = { ...reports[index], status, department, updatedAt: at, timeline: [...(reports[index].timeline || []), { status, note, at }].slice(-30) };
         writeReports(reports);
-        return sendJson(res, 200, { report: reports[index], message: 'Demo report updated.' });
+        const sms = status === 'Resolved' && previousStatus !== 'Resolved'
+          ? await sendSmsNotification(reports[index], 'resolved')
+          : 'not_requested';
+        return sendJson(res, 200, { report: authorityViewReport(reports[index]), sms, message: 'Demo report updated.' });
       }
       if (req.method === 'POST' && pathname === '/api/demo/reset') {
         writeReports(seedReports());

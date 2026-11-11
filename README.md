@@ -168,3 +168,14 @@ After phone encryption is configured, SMS can be enabled by setting `SEMAPHORE_A
 ## v2.5.0 update notes
 
 This version fixes the Approved public-ticket workflow, renews expired approvals, moves Contact Developer to `/contact`, delays map-library loading until needed, and returns save responses without waiting for SMS provider delivery. See `CHANGELOG.md` for details.
+
+
+## v2.6.0 update notes
+
+- The home page now presents the full project proposal title and a short typing introduction for **Jerosh Nevado, Grade 12-ICT**.
+- Mobile Submit / Check Status tabs no longer cover the report form or map.
+- Authority report details return the text and metadata first; photo evidence is loaded only when requested.
+- The photo endpoint is protected by authority sign-in, while the authority export still includes the attached photo.
+- Admin API requests time out after 15 seconds and display a retry-friendly error instead of leaving the loading modal spinning indefinitely.
+
+The current data file remains `data/reports.json` on the server's configured filesystem. A free hosting instance may use an ephemeral filesystem; configure durable storage or a database before relying on long-term records. See `UPDATE_INSTRUCTIONS_TERMUX_v2.6.0.md` before replacing an existing local copy.

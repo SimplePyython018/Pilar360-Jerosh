@@ -188,9 +188,17 @@ function createApp(options = {}) {
       return '';
     }
   }
-    function authorityViewReport(report) {
-    const { phoneEncrypted, phone: legacyPhone, ...visible } = report;
-    return { ...visible, phone: decryptPhoneNumber(report), phoneProtected: Boolean(phoneEncrypted) };
+  function authorityViewReport(report, { includePhoto = false } = {}) {
+    // Keep large base64 image payloads out of the initial detail response.
+    // The authority UI requests the photo separately only when the user opens it.
+    const { phoneEncrypted, phone: legacyPhone, photoData, ...visible } = report;
+    return {
+      ...visible,
+      hasPhoto: Boolean(photoData),
+      ...(includePhoto && photoData ? { photoData } : {}),
+      phone: decryptPhoneNumber(report),
+      phoneProtected: Boolean(phoneEncrypted)
+    };
   }
   function authorityListReport(report) {
     // List/dashboard payloads do not need images, timelines, or contact numbers.
@@ -268,7 +276,7 @@ function createApp(options = {}) {
     catch { return sendJson(res, 400, { error: 'Invalid URL path.' }); }
     try {
       if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) && !hasValidOrigin(req)) return sendJson(res, 403, { error: 'Request origin was not accepted.' });
-      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.5.0-demo', mode: 'prototype', now: new Date().toISOString() });
+      if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, app: 'Pilar360', version: '2.6.0-demo', mode: 'prototype', now: new Date().toISOString() });
 
       if (req.method === 'GET' && pathname === '/api/admin/session') return sendJson(res, 200, { authenticated: isAuthorized(req), configured: Boolean(adminPassword) });
       if (req.method === 'POST' && pathname === '/api/admin/login') {
@@ -355,7 +363,7 @@ function createApp(options = {}) {
       }
 
       // All other report records and management actions are authority-only.
-      const protectedPath = pathname === '/api/workspace' || pathname === '/api/reports' || pathname === '/api/stats' || pathname === '/api/export' || pathname === '/api/demo/reset' || /^\/api\/reports\/[^/]+$/.test(pathname);
+      const protectedPath = pathname === '/api/workspace' || pathname === '/api/reports' || pathname === '/api/stats' || pathname === '/api/export' || pathname === '/api/demo/reset' || /^\/api\/reports\/[^/]+(?:\/photo)?$/.test(pathname);
       if (protectedPath && !isAuthorized(req)) return unauthorized(res);
 
       if (req.method === 'GET' && pathname === '/api/workspace') {
@@ -376,9 +384,16 @@ function createApp(options = {}) {
       }
       if (req.method === 'GET' && pathname === '/api/stats') return sendJson(res, 200, summarize(readReports()));
       if (req.method === 'GET' && pathname === '/api/export') {
-        const payload = JSON.stringify({ app: 'Pilar360', exportType: 'DEMO_DATA', exportedAt: new Date().toISOString(), reports: readReports().map(authorityViewReport) }, null, 2);
+        const payload = JSON.stringify({ app: 'Pilar360', exportType: 'DEMO_DATA', exportedAt: new Date().toISOString(), reports: readReports().map(report => authorityViewReport(report, { includePhoto: true })) }, null, 2);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="pilar360-demo-export.json"', 'Content-Length': Buffer.byteLength(payload), 'Cache-Control': 'no-store' });
         return res.end(payload);
+      }
+      const reportPhotoMatch = pathname.match(/^\/api\/reports\/([^/]+)\/photo$/);
+      if (req.method === 'GET' && reportPhotoMatch) {
+        const report = readReports().find(r => r.id === reportPhotoMatch[1]);
+        if (!report) return sendJson(res, 404, { error: 'Report not found.' });
+        if (!report.photoData) return sendJson(res, 404, { error: 'No photo evidence is attached to this report.' });
+        return sendJson(res, 200, { reportId: report.id, photoData: report.photoData });
       }
       const reportMatch = pathname.match(/^\/api\/reports\/([^/]+)$/);
       if (req.method === 'GET' && reportMatch) {

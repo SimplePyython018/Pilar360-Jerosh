@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.6.0 — Proposal introduction, mobile layout, and faster report details
+- Rebuilt the landing page around the exact proposal title: “Pilar360: A Web-Based Community Concern Reporting and Status Checking Prototype for Barangay Marifosque, Pilar, Sorsogon.”
+- Added a short typewriter presenter line: “Presented by Jerosh Nevado,” with the Grade 12-ICT student identification.
+- Fixed the mobile reporter tabs: Submit / Check Status now stay in normal page flow instead of floating over the form, map, or action buttons.
+- Added a 15-second request timeout and clear retry message to the authority API client, so report details cannot spin forever without feedback.
+- Removed base64 photo data from the initial authority report-detail response. Photo evidence now loads only when the authority user taps “Load photo evidence.”
+- Added a protected `/api/reports/:id/photo` endpoint. Public visitors cannot access submitted photo evidence.
+- Kept photo evidence in authority exports and added tests to verify the access control and export behavior.
+- Updated the admin workspace identity, page asset cache versions, health version, and Termux update instructions.
+
 ## 2.5.0 — Status workflow, responsive redesign, and performance
 - Fixed the status-save form: delegated submit handling now reads the actual form element, so the report ID and selected status reach the PATCH request.
 - Fixed public visibility of Approved sample tickets while keeping private report details hidden; once approved, their IDs remain visible as the status advances.

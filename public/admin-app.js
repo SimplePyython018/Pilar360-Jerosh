@@ -54,11 +54,28 @@
     return state.stats || { total: state.reports.length, active: activeReports().length, resolved: state.reports.filter(r => ['Resolved', 'Closed'].includes(r.status)).length, urgent: state.reports.filter(r => r.priority === 'Urgent' && !['Resolved', 'Closed'].includes(r.status)).length, submittedToday: 0, resolutionRate: 0, categories: [], statuses: [] };
   }
   async function api(url, options = {}) {
-    const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } });
-    const type = response.headers.get('content-type') || '';
-    const payload = type.includes('application/json') ? await response.json() : await response.text();
-    if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status}).`);
-    return payload;
+    const { timeoutMs = 15000, ...requestOptions } = options;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        ...requestOptions,
+        signal: controller.signal,
+        headers: { ...(requestOptions.body ? { 'Content-Type': 'application/json' } : {}), ...(requestOptions.headers || {}) }
+      });
+      const type = response.headers.get('content-type') || '';
+      const payload = type.includes('application/json') ? await response.json() : await response.text();
+      if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status}).`);
+      return payload;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error(`The server did not finish this request within ${Math.round(timeoutMs / 1000)} seconds. Check the connection and try again.`);
+      if (error instanceof TypeError) throw new Error('A network error interrupted the request. Check the website connection and try again.');
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
   let mapLibraryLoading = false;
   function loadMapLibrary() {
@@ -204,7 +221,7 @@
     $('#pageContent').innerHTML = `${pageHeading('DATA SNAPSHOT', 'Community insights', 'A lightweight operational view of what residents are reporting. Counts are calculated from this prototype’s local dataset.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export JSON</button>')}<section class="stats-grid">${statCard('Total reports', totals, 'All categories and statuses', '▤', '', 'DEMO')}${statCard('High / urgent open', highPriority, 'Prioritize assessment', '⚑', 'orange', highPriority ? 'REVIEW' : 'NONE')}${statCard('Location missing', noLocation, 'Reports without map coordinates', '⌖', 'blue', noLocation ? 'CHECK' : 'READY')}${statCard('Resolved share', `${stats.resolutionRate}%`, 'Resolved or closed', '✓', 'purple', `${stats.resolutionRate}%`)}</section><section class="insights-grid"><article class="insight-card"><h3>Workflow distribution</h3><p>How reports are moving through the demo process.</p><div class="status-bars">${statuses.map(item => `<div class="status-bar-row"><span>${escapeHtml(item.status)}</span><div class="status-bar-track"><div class="status-bar-fill" style="width:${Math.round(item.count / max * 100)}%;background:${item.status === 'Resolved' || item.status === 'Closed' ? '#8dbd55' : item.status === 'Urgent' ? '#ef8d70' : '#92b5ed'}"></div></div><strong>${item.count}</strong></div>`).join('')}</div><div class="insight-summary"><div class="summary-circle">${totals ? Math.round(stats.resolutionRate) : 0}%</div><div><strong>Resolution / closure share</strong><br>This is a status ratio only. It is not a service-level guarantee or an official municipal performance measure.</div></div></article><article class="insight-card"><h3>Reports by category</h3><p>Use this to spot recurring topics in the sample data.</p><div class="status-bars">${CATEGORIES.map((category, index) => ({ category, count: state.reports.filter(r => r.category === category).length })).sort((a,b) => b.count - a.count).map((item,index) => `<div class="status-bar-row"><span>${escapeHtml(item.category)}</span><div class="status-bar-track"><div class="status-bar-fill" style="width:${Math.round(item.count / Math.max(1, totals) * 100)}%;background:${['#8dbd55','#92b5ed','#efad79','#a99bf5','#8fc5be'][index % 5]}"></div></div><strong>${item.count}</strong></div>`).join('')}</div><div class="insight-summary"><div class="summary-circle">${CATEGORIES.filter(category => state.reports.some(r => r.category === category)).length}</div><div><strong>Categories represented</strong><br>Categories with at least one report in the current local dataset.</div></div></article></section><div class="warning-note">Prototype analytics only: the sample records are fictional, and these numbers do not represent actual complaints or response performance in Pilar, Sorsogon.</div>`;
   }
   function renderSettings() {
-    $('#pageContent').innerHTML = `${pageHeading('PROJECT INFORMATION', 'Workspace & settings', 'Manage this local prototype, review the technical boundaries, and restore the original sample records.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export data</button>')}<section class="settings-grid"><article class="setting-card"><h3>Project identity</h3><p>Pilar 360 is an independent civic reporting prototype designed and built by Jerosh. It is not an official application of the Municipality of Pilar.</p><div class="setting-line"><span>Project</span><strong>Pilar 360</strong></div><div class="setting-line"><span>Builder</span><strong>Jerosh</strong></div><div class="setting-line"><span>Version</span><strong>2.5.0-demo</strong></div><div class="setting-line"><span>Runtime</span><strong>Node.js · native modules</strong></div><div class="setting-line"><span>Storage</span><strong>Local JSON database</strong></div></article><article class="setting-card"><h3>Demo data controls</h3><p>Submitted reports are written to <code>data/reports.json</code>. Resetting replaces the dataset with fictional sample reports; export before resetting if you need to keep your local demo entries.</p><div class="setting-line"><span>Current report count</span><strong>${state.reports.length}</strong></div><div class="setting-line"><span>Demo photos</span><strong>Stored as data URLs</strong></div><div class="setting-line"><span>Real LGU integration</span><strong>Not connected</strong></div><button class="btn btn-dark" data-action="reset-demo">↻ Restore sample dataset</button><div class="warning-note">Reset is permanent for the local demo file. Export your data first if you want to preserve it.</div></article><article class="setting-card"><h3>Privacy & deployment notes</h3><p>Use only for an approved classroom demonstration. Hosted access and HTTPS depend on the configured hosting provider.</p><div class="setting-line"><span>Authentication</span><strong>Protected demo sign-in</strong></div><div class="setting-line"><span>HTTPS / TLS</span><strong>Hosting dependent</strong></div><div class="setting-line"><span>Official case numbers</span><strong>Not issued</strong></div><div class="setting-line"><span>Emergency dispatch</span><strong>Not supported</strong></div></article><article class="setting-card"><h3>Production readiness checklist</h3><p>Before any real community use, the prototype needs a trusted LGU partner and a secured production architecture.</p>${['Municipality approval and official ownership','Authenticated citizen and staff accounts','Role-based permissions and audit logs','Secure file storage and backup policy','Privacy notice and data-retention rules','Verified map/geocoding and department routing','Monitoring, rate limiting and abuse prevention'].map(item => `<div class="setting-line"><span>${escapeHtml(item)}</span><strong style="color:#c87551">Not yet</strong></div>`).join('')}</article></section>`;
+    $('#pageContent').innerHTML = `${pageHeading('PROJECT INFORMATION', 'Workspace & settings', 'Manage this local prototype, review the technical boundaries, and restore the original sample records.', '<button class="btn btn-ghost" data-action="export"><span class="btn-icon">↓</span> Export data</button>')}<section class="settings-grid"><article class="setting-card"><h3>Project identity</h3><p>Pilar360 is an independent Grade 12-ICT project proposal prototype presented by Jerosh Nevado. It is not an official application of the Municipality of Pilar.</p><div class="setting-line"><span>Project</span><strong>Pilar360</strong></div><div class="setting-line"><span>Presented by</span><strong>Jerosh Nevado</strong></div><div class="setting-line"><span>Class</span><strong>Grade 12-ICT</strong></div><div class="setting-line"><span>Version</span><strong>2.6.0-demo</strong></div><div class="setting-line"><span>Runtime</span><strong>Node.js · native modules</strong></div><div class="setting-line"><span>Storage</span><strong>Local JSON database</strong></div></article><article class="setting-card"><h3>Demo data controls</h3><p>Submitted reports are written to <code>data/reports.json</code>. Resetting replaces the dataset with fictional sample reports; export before resetting if you need to keep your local demo entries.</p><div class="setting-line"><span>Current report count</span><strong>${state.reports.length}</strong></div><div class="setting-line"><span>Demo photos</span><strong>Stored as data URLs; loaded on demand</strong></div><div class="setting-line"><span>Real LGU integration</span><strong>Not connected</strong></div><button class="btn btn-dark" data-action="reset-demo">↻ Restore sample dataset</button><div class="warning-note">Reset is permanent for the local demo file. Export your data first if you want to keep your local demo entries.</div></article><article class="setting-card"><h3>Privacy & deployment notes</h3><p>Use only for an approved classroom demonstration. Hosted access and HTTPS depend on the configured hosting provider.</p><div class="setting-line"><span>Authentication</span><strong>Protected demo sign-in</strong></div><div class="setting-line"><span>HTTPS / TLS</span><strong>Hosting dependent</strong></div><div class="setting-line"><span>Official case numbers</span><strong>Not issued</strong></div><div class="setting-line"><span>Emergency dispatch</span><strong>Not supported</strong></div></article><article class="setting-card"><h3>Production readiness checklist</h3><p>Before any real community use, the prototype needs a trusted LGU partner and a secured production architecture.</p>${['Municipality approval and official ownership','Authenticated citizen and staff accounts','Role-based permissions and audit logs','Secure file storage and backup policy','Privacy notice and data-retention rules','Verified map/geocoding and department routing','Monitoring, rate limiting and abuse prevention'].map(item => `<div class="setting-line"><span>${escapeHtml(item)}</span><strong style="color:#c87551">Not yet</strong></div>`).join('')}</article></section>`;
   }
   function destroyMaps() {
     for (const map of state.mapInstances) { try { map.remove(); } catch {} }
@@ -317,8 +334,43 @@
   }
   function photoEvidence(report) {
     if (report.photoData) return `<figure class="evidence-photo"><img src="${report.photoData}" alt="Photo evidence submitted with ${escapeHtml(report.id)}" loading="lazy"><figcaption>Photo submitted by the reporter</figcaption></figure>`;
+    if (report.hasPhoto) return `<div class="evidence-photo evidence-photo-locked" id="reportPhotoEvidence"><div class="evidence-photo-prompt"><span class="evidence-photo-icon" aria-hidden="true">▧</span><div><strong>Photo evidence is available</strong><small>Load it only when you need to inspect the submitted image.</small></div></div><button class="btn btn-ghost" type="button" data-load-report-photo="${escapeHtml(report.id)}">Load photo evidence</button></div>`;
     const meta = CATEGORY_META[report.category] || CATEGORY_META.Other;
     return `<div class="evidence-placeholder" role="img" aria-label="No photo was attached to this report"><span>${meta.icon}</span><div><strong>No photo attached</strong><small>The reporter did not upload photo evidence for this submission.</small></div></div>`;
+  }
+  async function loadReportPhoto(button) {
+    const id = button?.dataset?.loadReportPhoto;
+    const host = $('#reportPhotoEvidence');
+    if (!id || !host || button.disabled) return;
+    const previousLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Loading photo…';
+    try {
+      const result = await api(`/api/reports/${encodeURIComponent(id)}/photo`, { timeoutMs: 25000 });
+      if (!host.isConnected) return;
+      if (!result.photoData || !/^data:image\/(png|jpeg|webp);base64,/.test(result.photoData)) throw new Error('The server returned an invalid photo file.');
+      const image = document.createElement('img');
+      image.src = result.photoData;
+      image.alt = `Photo evidence submitted with ${id}`;
+      image.loading = 'lazy';
+      const caption = document.createElement('figcaption');
+      caption.textContent = 'Photo submitted by the reporter';
+      const figure = document.createElement('figure');
+      figure.className = 'evidence-photo';
+      figure.append(image, caption);
+      host.replaceWith(figure);
+    } catch (error) {
+      if (!host.isConnected) return;
+      button.disabled = false;
+      button.textContent = 'Try loading photo again';
+      let message = host.querySelector('.photo-load-error');
+      if (!message) {
+        message = document.createElement('small');
+        message.className = 'photo-load-error';
+        host.appendChild(message);
+      }
+      message.textContent = error.message;
+    }
   }
   function showDetailLoading(id) {
     $('#modalHost').innerHTML = `<div class="modal-backdrop" data-dismiss-modal><section class="modal detail-loading" role="dialog" aria-modal="true" aria-label="Opening report"><div class="loader"></div><strong>Opening report ${escapeHtml(id)}…</strong><p>Loading report details.</p><button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button></section></div>`;
@@ -492,6 +544,8 @@
   document.addEventListener('click', event => {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
     if (!target) return;
+    const photoTrigger = target.closest('[data-load-report-photo]');
+    if (photoTrigger) { event.preventDefault(); void loadReportPhoto(photoTrigger); return; }
     const reportTrigger = target.closest('[data-open-report]');
     if (reportTrigger) {
       event.preventDefault();

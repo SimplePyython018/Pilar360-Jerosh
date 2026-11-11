@@ -18,7 +18,10 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   const json = (method, body, cookie) => ({ method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
 
   const health = await call('/api/health');
-  assert.equal(health.status, 200); assert.equal((await health.json()).ok, true);
+  assert.equal(health.status, 200);
+  const healthPayload = await health.json();
+  assert.equal(healthPayload.ok, true);
+  assert.equal(healthPayload.version, '2.6.0-demo');
   const session = await call('/api/admin/session');
   assert.deepEqual(await session.json(), { authenticated: false, configured: true });
 
@@ -40,7 +43,8 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   const outOfScope = await call('/api/reports', json('POST', { title: 'Streetlight in another area', category: 'Streetlight', description: 'This report is outside the selected project barangay.', barangay: 'Banuyo', reporter: 'Test Resident' }));
   assert.equal(outOfScope.status, 422, 'public submissions must stay within the selected barangay');
 
-  const create = await call('/api/reports', json('POST', { title: 'Smoke test streetlight', category: 'Streetlight', description: 'The streetlight is not working near the test location.', barangay: 'Marifosque', address: 'Near test waiting shed', priority: 'Normal', lat: 12.9251, lng: 123.6740, reporter: 'Test Resident' }));
+  const samplePhoto = 'data:image/png;base64,aGVsbG8=';
+  const create = await call('/api/reports', json('POST', { title: 'Smoke test streetlight', category: 'Streetlight', description: 'The streetlight is not working near the test location.', barangay: 'Marifosque', address: 'Near test waiting shed', priority: 'Normal', lat: 12.9251, lng: 123.6740, reporter: 'Test Resident', photoData: samplePhoto }));
   assert.equal(create.status, 201);
   const created = (await create.json()).report;
   assert.match(created.id, /^PIL-\d{4}-\d{4}$/); assert.equal(created.status, 'Submitted');
@@ -79,6 +83,12 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   const detailedRecord = (await authorizedDetail.json()).report;
   assert.equal(detailedRecord.reporter, 'Test Resident');
   assert.equal(detailedRecord.address, 'Near test waiting shed');
+  assert.equal(detailedRecord.hasPhoto, true, 'detail endpoint should signal that photo evidence exists');
+  assert.equal('photoData' in detailedRecord, false, 'large photo data must not delay the initial report detail response');
+  assert.equal((await call(`/api/reports/${created.id}/photo`)).status, 401, 'photo evidence must remain authority-only');
+  const photoResponse = await call(`/api/reports/${created.id}/photo`, { headers: { cookie } });
+  assert.equal(photoResponse.status, 200);
+  assert.equal((await photoResponse.json()).photoData, samplePhoto, 'authority can load the submitted photo on demand');
   assert.equal((await call(`/api/reports/${created.id}`)).status, 401, 'report details must remain authority-only');
 
   const unauthorizedUpdate = await call(`/api/reports/${created.id}`, json('PATCH', { status: 'Resolved' }));
@@ -109,7 +119,10 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.equal((await call('/api/export')).status, 401);
   const exportResponse = await call('/api/export', { headers: { cookie } });
   assert.equal(exportResponse.status, 200);
-  const exported = await exportResponse.json(); assert.ok(exported.reports.some(r => r.id === created.id));
+  const exported = await exportResponse.json();
+  const exportedPhotoReport = exported.reports.find(r => r.id === created.id);
+  assert.ok(exportedPhotoReport);
+  assert.equal(exportedPhotoReport.photoData, samplePhoto, 'authority export must keep the complete report including photo evidence');
 
   const logout = await call('/api/admin/logout', json('POST', {}, cookie));
   assert.equal(logout.status, 200);
@@ -117,7 +130,10 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
 
   assert.equal((await call('/')).status, 200);
   const intro = await (await call('/')).text();
-  assert.match(intro, /Jerosh/); assert.match(intro, /Grade 12/); assert.match(intro, /href=\"\/report\"/);
+  assert.match(intro, /Jerosh Nevado/); assert.match(intro, /Grade 12-ICT/);
+  assert.match(intro, /A Web-Based Community Concern Reporting and Status Checking Prototype for Barangay Marifosque, Pilar, Sorsogon/);
+  assert.match(intro, /href=\"\/report\"/);
+  assert.equal((await call('/intro.js')).status, 200);
   assert.equal((await call('/report')).status, 200);
   const portal = await (await call('/report')).text();
   assert.match(portal, /Submit a report/);
@@ -146,4 +162,10 @@ test('Pilar360 public reporting, private authority access, tracking, map data an
   assert.match(reporterJs, /signedOut/);
   assert.match(reporterJs, /result\.sms === 'pending'/, 'reporter must explain asynchronous SMS processing accurately');
   assert.match(reporterJs, /loadPublicTickets\(\{ quiet: true \}\)/, 'background refresh should not flash a loading screen every 30 seconds');
+  assert.match(adminJs, /timeoutMs = 15000/, 'admin API requests must have a timeout instead of spinning forever');
+  assert.match(adminJs, /data-load-report-photo/, 'report photos should be requested only when opened');
+  const adminStyles = await (await call('/admin-styles.css')).text();
+  assert.match(adminStyles, /evidence-photo-locked/, 'on-demand photo evidence should have a responsive detail style');
+  const reporterStyles = await (await call('/reporter.css')).text();
+  assert.match(reporterStyles, /portal-tabs\{position:relative/, 'mobile portal tabs must stay in document flow and not cover the form');
 });

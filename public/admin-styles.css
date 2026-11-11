@@ -271,3 +271,14 @@ html,body{width:100%;max-width:100%;overflow-x:hidden}
 .overview-shortcuts b{margin-left:auto;color:#819a68;font-size:13px}
 @media(max-width:900px){.overview-lower-grid{grid-template-columns:minmax(0,1fr) minmax(230px,.85fr)}}
 @media(max-width:680px){.overview-banner{grid-template-columns:1fr;gap:14px;padding:17px 15px;border-radius:13px}.overview-banner h2{font-size:21px}.overview-banner p{font-size:10px}.overview-banner-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.overview-banner-actions .btn{min-height:39px;padding:9px 7px;font-size:9px}.overview-queue-tile{grid-template-columns:1fr auto;align-items:center;padding:11px 13px;gap:3px 10px}.overview-queue-tile>span{grid-column:1}.overview-queue-tile>strong{grid-column:2;grid-row:1/3;font-size:27px}.overview-queue-tile>small{grid-column:1}.overview-queue-tile>button{grid-column:1;justify-self:start;font-size:9px}.overview-lower-grid{grid-template-columns:minmax(0,1fr);gap:11px}.overview-side-stack{gap:11px}.overview-status-list{padding:3px 14px 15px}.overview-shortcuts>button{width:calc(100% - 24px);margin-left:12px;margin-right:12px}.overview-status-panel .panel-header,.overview-shortcuts .panel-header{padding:13px 14px 10px}}
+
+/* v2.6.0: report photos load only after an authority user requests them. */
+.evidence-photo-locked{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:13px}
+.evidence-photo-prompt{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.evidence-photo-icon{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:10px;background:#eaf1e4;color:#567d38;font-size:20px}
+.evidence-photo-prompt strong,.evidence-photo-prompt small{display:block}
+.evidence-photo-prompt strong{font-size:11px;color:#536978}
+.evidence-photo-prompt small,.photo-load-error{font-size:9px;line-height:1.5;color:#87959c}
+.evidence-photo-locked .btn{min-height:36px;padding:8px 11px;font-size:9px}
+.photo-load-error{flex-basis:100%;color:#b45f4e}
+@media(max-width:480px){.evidence-photo-locked{align-items:stretch}.evidence-photo-locked .btn{width:100%}}

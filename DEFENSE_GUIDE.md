@@ -76,3 +76,15 @@ Reminder: use fictional sample data for a classroom demo. This prototype does no
 - The Contact Developer form opens the visitor's email app with a message prepared for the developer. The visitor must press Send; the prototype does not automatically send or store the message.
 
 **Important:** A ticket marked Resolved only means it was marked as resolved inside this student prototype. It does not prove that the barangay has completed actual work.
+
+
+## Short opening introduction (v2.6)
+
+“Good day! I am **Jerosh Nevado**, a Grade 12-ICT student. I am presenting **Pilar360: A Web-Based Community Concern Reporting and Status Checking Prototype for Barangay Marifosque, Pilar, Sorsogon**. This prototype allows residents to submit community concerns, receive a report ID, and check the status saved in the demonstration system.”
+
+## What changed in v2.6
+
+- The first page introduces the project title and presenter before opening the reporter portal.
+- On mobile, the Submit and Check Status tabs remain in the page layout so they do not cover the form or map.
+- The authority report detail opens without downloading the photo first. The authority user can tap **Load photo evidence** when it is needed.
+- A slow or interrupted report-detail request now ends with an error message and retry option instead of an endless spinner.
